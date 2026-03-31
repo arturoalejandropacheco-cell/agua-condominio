@@ -147,7 +147,7 @@
     }
 
     function populateYears() {
-        for (let y = 2025; y <= 2030; y++) {
+        for (let y = 2026; y <= 2030; y++) {
             const opt = document.createElement('option');
             opt.value = y;
             opt.textContent = y;
