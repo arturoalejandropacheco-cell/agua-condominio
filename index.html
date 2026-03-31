@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gastos Agua - Condominio</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <header>
+        <h1>💧 Agua Condominio</h1>
+        <p class="subtitle">Distribución de costos — 3 casas</p>
+    </header>
+
+    <div id="sync-status" class="sync-status hidden"></div>
+
+    <nav>
+        <button class="nav-btn active" data-tab="form">Nuevo Mes</button>
+        <button class="nav-btn" data-tab="history">Historial</button>
+        <button class="nav-btn" data-tab="config">Config</button>
+    </nav>
+
+    <main>
+        <!-- TAB: Formulario -->
+        <section id="tab-form" class="tab active">
+            <form id="monthly-form">
+                <div class="form-section">
+                    <h2>Período</h2>
+                    <div class="form-row">
+                        <div class="field">
+                            <label for="year">Año</label>
+                            <select id="year"></select>
+                        </div>
+                        <div class="field">
+                            <label for="month">Mes</label>
+                            <select id="month">
+                                <option value="Enero">Enero</option>
+                                <option value="Febrero">Febrero</option>
+                                <option value="Marzo">Marzo</option>
+                                <option value="Abril">Abril</option>
+                                <option value="Mayo">Mayo</option>
+                                <option value="Junio">Junio</option>
+                                <option value="Julio">Julio</option>
+                                <option value="Agosto">Agosto</option>
+                                <option value="Septiembre">Septiembre</option>
+                                <option value="Octubre">Octubre</option>
+                                <option value="Noviembre">Noviembre</option>
+                                <option value="Diciembre">Diciembre</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-section">
+                    <h2>Lecturas de Medidores (m³ acumulados)</h2>
+                    <div class="form-row">
+                        <div class="field">
+                            <label for="lectura-soraya">Medidor Soraya (E1)</label>
+                            <input type="number" id="lectura-soraya" placeholder="Ej: 981" required>
+                            <span class="hint" id="hint-soraya"></span>
+                        </div>
+                        <div class="field">
+                            <label for="lectura-cristian">Medidor Cristian (F1)</label>
+                            <input type="number" id="lectura-cristian" placeholder="Ej: 8710" required>
+                            <span class="hint" id="hint-cristian"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-section">
+                    <h2>Datos de Boleta</h2>
+                    <div class="form-row">
+                        <div class="field">
+                            <label for="total-cuenta">Total Cuenta Condominio ($)</label>
+                            <input type="number" id="total-cuenta" placeholder="Ej: 624170" required>
+                        </div>
+                        <div class="field">
+                            <label for="total-3casas">Total 3 Casas ($)</label>
+                            <input type="number" id="total-3casas" placeholder="Ej: 245712" required>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="field">
+                            <label for="trifasica">Trifásica ($) <span class="optional">opcional</span></label>
+                            <input type="number" id="trifasica" placeholder="Ej: 114158">
+                        </div>
+                        <div class="field">
+                            <label for="total-m3">Total m³ (3 casas)</label>
+                            <input type="number" id="total-m3" placeholder="Ej: 150" required>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="edit-info" class="edit-info hidden">
+                    Editando datos de <strong id="edit-period"></strong>
+                    <button type="button" id="cancel-edit" class="btn-cancel">Cancelar</button>
+                </div>
+
+                <button type="submit" class="btn-primary" id="btn-submit">Calcular y Guardar</button>
+            </form>
+
+            <!-- Resultados -->
+            <section id="results" class="hidden">
+                <h2>Resultados</h2>
+                <div id="results-content"></div>
+            </section>
+        </section>
+
+        <!-- TAB: Historial -->
+        <section id="tab-history" class="tab">
+            <div id="history-list"></div>
+        </section>
+
+        <!-- TAB: Configuración -->
+        <section id="tab-config" class="tab">
+            <div class="form-section">
+                <h2>Conexión Google Sheets</h2>
+                <div class="field" style="margin-bottom:0.75rem">
+                    <label for="apps-script-url">URL del Apps Script</label>
+                    <input type="url" id="apps-script-url" placeholder="https://script.google.com/macros/s/...">
+                    <span class="hint">Pega aquí la URL de tu Google Apps Script desplegado</span>
+                </div>
+                <div class="config-actions">
+                    <button type="button" id="btn-save-config" class="btn-primary" style="margin-top:0">Guardar Conexión</button>
+                    <button type="button" id="btn-test-config" class="btn-secondary">Probar Conexión</button>
+                </div>
+                <div id="config-status" class="config-status hidden"></div>
+                <div class="config-info">
+                    <p><strong>Sin conexión configurada:</strong> los datos se guardan solo en este navegador (localStorage).</p>
+                    <p><strong>Con conexión:</strong> los datos se sincronizan automáticamente con tu Google Sheet.</p>
+                </div>
+            </div>
+            <div class="form-section">
+                <h2>Datos Locales</h2>
+                <div class="config-actions">
+                    <button type="button" id="btn-sync-up" class="btn-secondary">Subir datos a Google Sheets</button>
+                    <button type="button" id="btn-sync-down" class="btn-secondary">Descargar datos de Google Sheets</button>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script src="app.js"></script>
+</body>
+</html>
