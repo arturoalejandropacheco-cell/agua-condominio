@@ -16,6 +16,7 @@
     --soraya: #8b5cf6;
     --cristian: #0891b2;
     --arturo: #d97706;
+    --perdida: #94a3b8;
     --danger: #dc2626;
 }
 
@@ -229,10 +230,22 @@ main {
     box-shadow: 0 1px 3px rgba(0,0,0,0.06);
 }
 
+/* En celular las 6 columnas no caben: la tabla desplaza en horizontal
+   en vez de recortar el Total, que es el dato que se cobra. */
+.result-summary .tabla-scroll {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
 .result-summary table {
     width: 100%;
     border-collapse: collapse;
     font-size: 0.8rem;
+}
+
+.result-summary td:first-child,
+.result-summary th:first-child {
+    white-space: nowrap;
 }
 
 .result-summary th {
@@ -422,6 +435,33 @@ main {
 .dot.soraya { background: var(--soraya); }
 .dot.cristian { background: var(--cristian); }
 .dot.arturo { background: var(--arturo); }
+.dot.perdida { background: var(--perdida); }
+
+/* Nota de pérdida bajo la tabla de desglose */
+.nota-perdida {
+    margin-top: 0.6rem;
+    padding-top: 0.6rem;
+    border-top: 1px dashed var(--border);
+    font-size: 0.78rem;
+    color: var(--text-light);
+    line-height: 1.45;
+}
+
+.nota-perdida strong {
+    color: var(--arturo);
+}
+
+/* La tabla se reusa dentro del historial: ahí va sin tarjeta propia */
+.history-body .result-summary {
+    padding: 0;
+    box-shadow: none;
+    border-radius: 0;
+    background: transparent;
+}
+
+.history-body .result-summary table {
+    margin-top: 0.5rem;
+}
 
 /* Sync status bar */
 .sync-status {
@@ -499,5 +539,21 @@ main {
     }
     main {
         padding: 0.75rem;
+    }
+    /* Los montos son lo que se cobra, así que la columna que se sacrifica
+       para que quepa el Total es el %, que se deduce de los m³. */
+    .result-summary .col-pct {
+        display: none;
+    }
+    .result-summary table {
+        font-size: 0.72rem;
+    }
+    .result-summary td,
+    .result-summary th {
+        padding-left: 0.15rem;
+        padding-right: 0.15rem;
+    }
+    .result-summary .dot {
+        margin-right: 0.25rem;
     }
 }

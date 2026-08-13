@@ -3,7 +3,14 @@
 
     const STORAGE_KEY = 'agua_condominio_data';
     const CONFIG_KEY = 'agua_condominio_config';
+    const SEED_VERSION_KEY = 'agua_condominio_seed_version';
     const MONTHS_ORDER = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
+    // Las casas que pagan, y todo lo que se reparte (la pérdida también consume
+    // m³ y por lo tanto arrastra costo, aunque no sea una casa).
+    const CASAS = ['soraya', 'cristian', 'arturo'];
+    const REPARTO = ['soraya', 'cristian', 'arturo', 'perdida'];
+    const NOMBRES = { soraya: 'Soraya', cristian: 'Cristian', arturo: 'Arturo', perdida: 'Pérdida' };
 
     // ── Historical seed data ──
     const SEED_DATA = [
@@ -15,7 +22,12 @@
         { year: 2025, month: 'Diciembre', lecturaSoraya: 846, lecturaCristian: 8679, totalCuenta: 518420, total3Casas: 91267, trifasica: 58854, totalM3: 75 },
         { year: 2026, month: 'Enero', lecturaSoraya: 906, lecturaCristian: 8701, totalCuenta: 518740, total3Casas: 120445, trifasica: 87663, totalM3: 106 },
         { year: 2026, month: 'Febrero', lecturaSoraya: 981, lecturaCristian: 8710, totalCuenta: 624170, total3Casas: 245712, trifasica: 114158, totalM3: 150 },
+        { year: 2026, month: 'Marzo', lecturaSoraya: 999, lecturaCristian: 8722, totalCuenta: 475140, total3Casas: 138415, trifasica: 96161, totalM3: 73 },
+        { year: 2026, month: 'Abril', lecturaSoraya: 1016, lecturaCristian: 8733, totalCuenta: 637540, total3Casas: 215527, trifasica: 85569, totalM3: 145, perdidaM3: 69 },
     ];
+    // Subir este número agrega los meses nuevos de SEED_DATA a los datos ya
+    // guardados, sin pisar nada de lo que el usuario haya editado.
+    const SEED_VERSION = 2;
 
     // ── State ──
     let records = [];
@@ -56,30 +68,51 @@
             const resp = await fetch(getApiUrl() + '?action=read', { redirect: 'follow' });
             return resp.json();
         }
-        // For POST actions, Google Apps Script redirects 302 which causes CORS issues.
-        // Workaround: encode data as URL param and use GET via a hidden form/redirect.
-        return new Promise((resolve, reject) => {
+
+        // Escrituras por POST con Content-Type text/plain: es una petición
+        // "simple" (sin preflight CORS) y Apps Script la responde tras el 302,
+        // así que sí podemos leer si guardó o falló.
+        try {
+            const resp = await fetch(getApiUrl() + '?action=' + action, {
+                method: 'POST',
+                redirect: 'follow',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify(body || {}),
+            });
+            return await resp.json();
+        } catch (err) {
+            // Despliegues antiguos o red bloqueada: enviamos a ciegas por iframe.
+            return apiCallViaIframe(action, body);
+        }
+    }
+
+    function apiCallViaIframe(action, body) {
+        return new Promise(resolve => {
             const data = encodeURIComponent(JSON.stringify(body || {}));
-            const url = getApiUrl() + '?action=' + action + '&data=' + data;
-            // Use an iframe to avoid CORS — fire-and-forget for writes
             const iframe = document.createElement('iframe');
             iframe.style.display = 'none';
-            iframe.src = url;
+            iframe.src = getApiUrl() + '?action=' + action + '&data=' + data;
             document.body.appendChild(iframe);
-            // Give it time to complete, then clean up
             setTimeout(() => {
-                document.body.removeChild(iframe);
-                resolve({ success: true });
+                if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
+                resolve({ success: true, sinConfirmar: true });
             }, 3000);
         });
+    }
+
+    function checkResponse(resp) {
+        if (resp && resp.error) throw new Error(resp.error);
+        return resp;
     }
 
     async function syncToCloud(record) {
         if (!isOnline()) return;
         try {
             showSyncStatus('Sincronizando...', 'syncing');
-            await apiCall('save', record);
-            showSyncStatus('Sincronizado con Google Sheets', 'online');
+            const resp = checkResponse(await apiCall('save', record));
+            showSyncStatus(resp && resp.sinConfirmar
+                ? 'Enviado a Google Sheets (sin confirmación del servidor)'
+                : 'Sincronizado con Google Sheets', 'online');
         } catch (err) {
             showSyncStatus('Error al sincronizar: ' + err.message, 'error');
         }
@@ -89,7 +122,7 @@
         if (!isOnline()) return;
         try {
             showSyncStatus('Eliminando...', 'syncing');
-            await apiCall('delete', { year, month });
+            checkResponse(await apiCall('delete', { year, month }));
             showSyncStatus('Eliminado de Google Sheets', 'online');
         } catch (err) {
             showSyncStatus('Error al eliminar: ' + err.message, 'error');
@@ -100,13 +133,14 @@
         if (!isOnline()) return;
         try {
             showSyncStatus('Subiendo todos los datos...', 'syncing');
-            // First init sheets
-            await apiCall('init', {});
-            // Then save each record
+            checkResponse(await apiCall('init', {}));
+            let n = 0;
             for (const r of records) {
-                await apiCall('save', r);
+                checkResponse(await apiCall('save', r));
+                n++;
+                showSyncStatus('Subiendo ' + n + ' de ' + records.length + '...', 'syncing');
             }
-            showSyncStatus('Todos los datos subidos a Google Sheets', 'online');
+            showSyncStatus(n + ' registros subidos a Google Sheets', 'online');
         } catch (err) {
             showSyncStatus('Error: ' + err.message, 'error');
         }
@@ -121,6 +155,7 @@
                 records = resp.records;
                 sortRecords();
                 saveLocal();
+                populateYears();
                 renderHistory();
                 updateHints();
                 showSyncStatus('Datos descargados de Google Sheets (' + records.length + ' registros)', 'online');
@@ -135,8 +170,8 @@
     // ── Init ──
     function init() {
         loadConfig();
-        populateYears();
         loadData();
+        populateYears();
         setupTabs();
         setupForm();
         setupEditCancel();
@@ -146,14 +181,22 @@
         updateSyncIndicator();
     }
 
+    // El rango debe cubrir todos los años con datos: si falta el año de un
+    // registro, al editarlo el <select> queda vacío y se guarda con año NaN.
     function populateYears() {
-        for (let y = 2026; y <= 2030; y++) {
+        const current = new Date().getFullYear();
+        const years = records.map(r => parseInt(r.year)).filter(y => !isNaN(y));
+        const from = Math.min(2025, current, ...years);
+        const to = Math.max(current + 4, ...years);
+
+        yearSel.innerHTML = '';
+        for (let y = from; y <= to; y++) {
             const opt = document.createElement('option');
             opt.value = y;
             opt.textContent = y;
             yearSel.appendChild(opt);
         }
-        yearSel.value = new Date().getFullYear();
+        yearSel.value = current;
     }
 
     function updateSyncIndicator() {
@@ -245,19 +288,32 @@
         const stored = localStorage.getItem(STORAGE_KEY);
         if (stored) {
             records = JSON.parse(stored);
+            mergeSeed();
         } else {
             records = SEED_DATA.slice();
             saveLocal();
+            localStorage.setItem(SEED_VERSION_KEY, String(SEED_VERSION));
         }
+    }
+
+    // Agrega los meses de SEED_DATA que falten. Corre una sola vez por versión
+    // y nunca reemplaza un registro existente.
+    function mergeSeed() {
+        const vista = parseInt(localStorage.getItem(SEED_VERSION_KEY)) || 0;
+        if (vista >= SEED_VERSION) return;
+
+        const existentes = new Set(records.map(key));
+        const nuevos = SEED_DATA.filter(r => !existentes.has(key(r)));
+        if (nuevos.length > 0) {
+            records = records.concat(nuevos);
+            sortRecords();
+            saveLocal();
+        }
+        localStorage.setItem(SEED_VERSION_KEY, String(SEED_VERSION));
     }
 
     function saveLocal() {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
-    }
-
-    function saveData(changedRecord) {
-        saveLocal();
-        if (changedRecord) syncToCloud(changedRecord);
     }
 
     // ── Tabs ──
@@ -276,6 +332,18 @@
     // ── Helpers ──
     function key(r) { return r.year + '-' + r.month; }
     function monthIdx(m) { return MONTHS_ORDER.indexOf(m); }
+
+    // parseFloat, no parseInt: los medidores y las boletas pueden traer decimales.
+    function num(id) {
+        const raw = document.getElementById(id).value.trim();
+        if (raw === '') return NaN;
+        return parseFloat(raw);
+    }
+
+    // Devuelve '' solo cuando el valor no existe; 0 es un valor válido.
+    function inputValue(v) {
+        return (v === null || v === undefined || v === '') ? '' : v;
+    }
 
     function sortRecords() {
         records.sort((a, b) => a.year !== b.year ? a.year - b.year : monthIdx(a.month) - monthIdx(b.month));
@@ -319,44 +387,76 @@
         yearSel.addEventListener('change', updateHints);
         monthSel.addEventListener('change', updateHints);
 
-        form.addEventListener('submit', function (e) {
+        form.addEventListener('submit', async function (e) {
             e.preventDefault();
             const data = {
                 year: parseInt(yearSel.value),
                 month: monthSel.value,
-                lecturaSoraya: parseInt(document.getElementById('lectura-soraya').value),
-                lecturaCristian: parseInt(document.getElementById('lectura-cristian').value),
-                totalCuenta: parseInt(document.getElementById('total-cuenta').value),
-                total3Casas: parseInt(document.getElementById('total-3casas').value),
-                trifasica: parseInt(document.getElementById('trifasica').value) || 0,
-                totalM3: parseInt(document.getElementById('total-m3').value),
+                lecturaSoraya: num('lectura-soraya'),
+                lecturaCristian: num('lectura-cristian'),
+                totalCuenta: num('total-cuenta'),
+                total3Casas: num('total-3casas'),
+                trifasica: num('trifasica'),
+                totalM3: num('total-m3'),
+                perdidaM3: isNaN(num('perdida-m3')) ? 0 : num('perdida-m3'),
             };
 
+            if (isNaN(data.year)) {
+                alert('Selecciona un año válido.');
+                return;
+            }
+            if (isNaN(data.trifasica)) {
+                alert('La trifásica es obligatoria. Si este mes no hubo cobro, ingresa 0.');
+                document.getElementById('trifasica').focus();
+                return;
+            }
+            const faltantes = ['lecturaSoraya','lecturaCristian','totalCuenta','total3Casas','totalM3']
+                .filter(f => isNaN(data[f]));
+            if (faltantes.length > 0) {
+                alert('Faltan datos numéricos en el formulario.');
+                return;
+            }
+
             const k = key(data);
-            const existingIdx = records.findIndex(r => key(r) === k);
+            const original = editingKey ? records.find(r => key(r) === editingKey) : null;
+            const movedPeriod = !!(editingKey && editingKey !== k);
+
+            // Al editar puede cambiar el período: hay que quitar el registro
+            // original Y cualquier registro que ya ocupe el período destino,
+            // si no quedan dos filas con la misma clave.
+            if (movedPeriod && records.some(r => key(r) === k)) {
+                if (!confirm('Ya existen datos para ' + data.month + ' ' + data.year + '. ¿Deseas reemplazarlos?')) return;
+            }
 
             if (editingKey) {
-                const oldIdx = records.findIndex(r => key(r) === editingKey);
-                if (oldIdx !== -1) records.splice(oldIdx, 1);
+                records = records.filter(r => key(r) !== editingKey && key(r) !== k);
                 records.push(data);
                 editingKey = null;
                 editInfo.classList.add('hidden');
                 btnSubmit.textContent = 'Calcular y Guardar';
-            } else if (existingIdx !== -1) {
+            } else if (records.some(r => key(r) === k)) {
                 if (!confirm('Ya existen datos para ' + data.month + ' ' + data.year + '. ¿Deseas reemplazarlos?')) return;
-                records[existingIdx] = data;
+                records = records.filter(r => key(r) !== k);
+                records.push(data);
             } else {
                 records.push(data);
             }
 
             sortRecords();
-            saveData(data);
+            saveLocal();
 
             const result = calculate(data);
             showResults(data, result);
             form.reset();
             yearSel.value = data.year;
+            monthSel.value = data.month;
             updateHints();
+            renderHistory();
+
+            // Nube al final y en orden: primero se borra el período viejo,
+            // recién después se guarda el nuevo.
+            if (movedPeriod && original) await deleteFromCloud(original.year, original.month);
+            syncToCloud(data);
         });
     }
 
@@ -376,34 +476,136 @@
         const prev = getPrevRecord(record.year, record.month);
         if (!prev) return null;
 
-        const consumoSoraya = record.lecturaSoraya - prev.lecturaSoraya;
-        const consumoCristian = record.lecturaCristian - prev.lecturaCristian;
-        const consumoArturo = record.totalM3 - consumoSoraya - consumoCristian;
-
         const total = record.totalM3;
-        const pctSoraya = total > 0 ? consumoSoraya / total : 0;
-        const pctCristian = total > 0 ? consumoCristian / total : 0;
-        const pctArturo = total > 0 ? consumoArturo / total : 0;
+        // Registros antiguos (o bajados de la hoja) pueden no traer el campo.
+        const montoAgua = Number(record.total3Casas) || 0;
+        const montoTri = Number(record.trifasica) || 0;
+        const perdida = Number(record.perdidaM3) || 0;
 
-        const costoAguaSoraya = record.total3Casas * pctSoraya;
-        const costoAguaCristian = record.total3Casas * pctCristian;
-        const costoAguaArturo = record.total3Casas * pctArturo;
+        const consumo = {
+            soraya: record.lecturaSoraya - prev.lecturaSoraya,
+            cristian: record.lecturaCristian - prev.lecturaCristian,
+        };
+        // Arturo sigue siendo el residuo, pero descontando la pérdida declarada.
+        consumo.arturo = total - consumo.soraya - consumo.cristian - perdida;
+        consumo.perdida = perdida;
 
-        const costoTriSoraya = record.trifasica * pctSoraya;
-        const costoTriCristian = record.trifasica * pctCristian;
-        const costoTriArturo = record.trifasica * pctArturo;
+        const pct = {}, costoAgua = {}, costoTri = {}, costoTotal = {};
+        REPARTO.forEach(h => {
+            pct[h] = total > 0 ? consumo[h] / total : 0;
+            costoAgua[h] = montoAgua * pct[h];
+            costoTri[h] = montoTri * pct[h];
+            costoTotal[h] = costoAgua[h] + costoTri[h];
+        });
 
         return {
-            consumo: { soraya: consumoSoraya, cristian: consumoCristian, arturo: consumoArturo },
-            pct: { soraya: pctSoraya, cristian: pctCristian, arturo: pctArturo },
-            costoAgua: { soraya: costoAguaSoraya, cristian: costoAguaCristian, arturo: costoAguaArturo },
-            costoTri: { soraya: costoTriSoraya, cristian: costoTriCristian, arturo: costoTriArturo },
-            total: {
-                soraya: costoAguaSoraya + costoTriSoraya,
-                cristian: costoAguaCristian + costoTriCristian,
-                arturo: costoAguaArturo + costoTriArturo,
+            consumo: consumo,
+            pct: pct,
+            costoAgua: costoAgua,
+            costoTri: costoTri,
+            total: costoTotal,
+            hayPerdida: perdida > 0,
+            // Arturo asume la pérdida: esto es lo que efectivamente paga cada casa.
+            pagar: {
+                soraya: costoTotal.soraya,
+                cristian: costoTotal.cristian,
+                arturo: costoTotal.arturo + costoTotal.perdida,
             },
+            prev: prev,
+            mesesSalto: (record.year * 12 + monthIdx(record.month)) - (prev.year * 12 + monthIdx(prev.month)),
         };
+    }
+
+    // ── Validaciones ──
+    // El consumo de Arturo se obtiene por diferencia, así que cualquier error
+    // de lectura o de m³ de boleta se le carga entero a él: hay que avisarlo.
+    function warnings(record, result) {
+        const w = [];
+        const box = m => `<div class="validation-warning">${m}</div>`;
+
+        if (result.consumo.soraya < 0) {
+            w.push(box('La lectura de Soraya es menor que la del período anterior (' + result.prev.lecturaSoraya + ' m³). Revisa el medidor.'));
+        }
+        if (result.consumo.cristian < 0) {
+            w.push(box('La lectura de Cristian es menor que la del período anterior (' + result.prev.lecturaCristian + ' m³). Revisa el medidor.'));
+        }
+        if (result.consumo.arturo < 0) {
+            w.push(box('El consumo de Arturo resulta negativo: Soraya + Cristian' +
+                (result.hayPerdida ? ' + pérdida' : '') + ' (' +
+                (result.consumo.soraya + result.consumo.cristian + result.consumo.perdida) +
+                ' m³) supera el total de boleta (' + record.totalM3 + ' m³). Revisa las lecturas' +
+                (result.hayPerdida ? ', la pérdida' : '') + ' o el total.'));
+        }
+        if (result.hayPerdida) {
+            w.push(box('Este mes tiene ' + result.consumo.perdida + ' m³ de pérdida (' +
+                fmtPct(result.pct.perdida) + ' de la boleta, ' + fmtCLP(result.total.perdida) +
+                '), que asume Arturo.'));
+        }
+        if (result.mesesSalto > 1) {
+            w.push(box('El período anterior con datos es ' + result.prev.month + ' ' + result.prev.year +
+                ' (' + result.mesesSalto + ' meses atrás). El consumo calculado abarca todo ese lapso, ' +
+                'pero el total de boleta es de un solo mes.'));
+        }
+        if (!(Number(record.total3Casas) > 0)) {
+            w.push(box('El total de las 3 casas es 0: no se puede repartir el costo del agua.'));
+        }
+        return w.join('');
+    }
+
+    // ── Tabla de desglose (compartida por resultados e historial) ──
+    // Las filas suman exactamente el total de boleta: la pérdida es una fila
+    // más, no un monto suelto fuera del cuadro.
+    function renderTable(record, result) {
+        const filas = result.hayPerdida ? REPARTO : CASAS;
+
+        let html = `<div class="result-summary">
+            <div class="tabla-scroll">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Casa</th>
+                        <th class="text-right">m³</th>
+                        <th class="text-right col-pct">%</th>
+                        <th class="text-right">Agua</th>
+                        <th class="text-right">Trifásica</th>
+                        <th class="text-right">Total</th>
+                    </tr>
+                </thead>
+                <tbody>`;
+
+        filas.forEach(h => {
+            html += `
+                    <tr>
+                        <td><span class="dot ${h}"></span>${NOMBRES[h]}</td>
+                        <td class="text-right">${result.consumo[h]}</td>
+                        <td class="text-right col-pct">${fmtPct(result.pct[h])}</td>
+                        <td class="text-right">${fmtCLP(result.costoAgua[h])}</td>
+                        <td class="text-right">${fmtCLP(result.costoTri[h])}</td>
+                        <td class="text-right">${fmtCLP(result.total[h])}</td>
+                    </tr>`;
+        });
+
+        const granTotal = filas.reduce((s, h) => s + result.total[h], 0);
+        html += `
+                    <tr>
+                        <td>TOTAL</td>
+                        <td class="text-right">${record.totalM3}</td>
+                        <td class="text-right col-pct">100%</td>
+                        <td class="text-right">${fmtCLP(record.total3Casas)}</td>
+                        <td class="text-right">${fmtCLP(record.trifasica)}</td>
+                        <td class="text-right">${fmtCLP(granTotal)}</td>
+                    </tr>
+                </tbody>
+            </table>
+            </div>`;
+
+        if (result.hayPerdida) {
+            html += `<p class="nota-perdida">Arturo asume la pérdida:
+                ${fmtCLP(result.total.arturo)} de consumo propio + ${fmtCLP(result.total.perdida)} de pérdida =
+                <strong>${fmtCLP(result.pagar.arturo)}</strong></p>`;
+        }
+
+        return html + '</div>';
     }
 
     // ── Results display ──
@@ -414,77 +616,28 @@
             return;
         }
 
-        let warning = '';
-        const sumConsumo = result.consumo.soraya + result.consumo.cristian + result.consumo.arturo;
-        if (sumConsumo !== record.totalM3) {
-            warning = `<div class="validation-warning">La suma de consumos (${sumConsumo} m³) no coincide con el total de boleta (${record.totalM3} m³).</div>`;
-        }
-        if (result.consumo.arturo < 0) {
-            warning += '<div class="validation-warning">El consumo de Arturo resulta negativo. Revisa las lecturas.</div>';
-        }
+        let html = warnings(record, result);
 
-        const houses = ['soraya', 'cristian', 'arturo'];
-        const names = { soraya: 'Soraya', cristian: 'Cristian', arturo: 'Arturo' };
-
-        let html = warning;
-
-        houses.forEach(h => {
+        CASAS.forEach(h => {
+            const asumePerdida = h === 'arturo' && result.hayPerdida;
             html += `
                 <div class="result-card">
                     <div class="result-card-header ${h}">
-                        <span><span class="dot ${h}"></span>${names[h]}</span>
-                        <span class="result-total">${fmtCLP(result.total[h])}</span>
+                        <span><span class="dot ${h}"></span>${NOMBRES[h]}</span>
+                        <span class="result-total">${fmtCLP(result.pagar[h])}</span>
                     </div>
                     <div class="result-detail">
                         <span>Consumo <span class="value">${result.consumo[h]} m³</span></span>
                         <span>Porcentaje <span class="value">${fmtPct(result.pct[h])}</span></span>
                         <span>Agua <span class="value">${fmtCLP(result.costoAgua[h])}</span></span>
                         <span>Trifásica <span class="value">${fmtCLP(result.costoTri[h])}</span></span>
+                        ${asumePerdida ? `<span>Consumo propio <span class="value">${fmtCLP(result.total[h])}</span></span>
+                        <span>Pérdida asumida <span class="value">${fmtCLP(result.total.perdida)}</span></span>` : ''}
                     </div>
                 </div>`;
         });
 
-        html += `
-            <div class="result-summary">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Casa</th>
-                            <th class="text-right">m³</th>
-                            <th class="text-right">%</th>
-                            <th class="text-right">Agua</th>
-                            <th class="text-right">Trifásica</th>
-                            <th class="text-right">Total</th>
-                        </tr>
-                    </thead>
-                    <tbody>`;
-
-        houses.forEach(h => {
-            html += `
-                        <tr>
-                            <td><span class="dot ${h}"></span>${names[h]}</td>
-                            <td class="text-right">${result.consumo[h]}</td>
-                            <td class="text-right">${fmtPct(result.pct[h])}</td>
-                            <td class="text-right">${fmtCLP(result.costoAgua[h])}</td>
-                            <td class="text-right">${fmtCLP(result.costoTri[h])}</td>
-                            <td class="text-right">${fmtCLP(result.total[h])}</td>
-                        </tr>`;
-        });
-
-        const grandTotal = result.total.soraya + result.total.cristian + result.total.arturo;
-        html += `
-                        <tr>
-                            <td>TOTAL</td>
-                            <td class="text-right">${record.totalM3}</td>
-                            <td class="text-right">100%</td>
-                            <td class="text-right">${fmtCLP(record.total3Casas)}</td>
-                            <td class="text-right">${fmtCLP(record.trifasica)}</td>
-                            <td class="text-right">${fmtCLP(grandTotal)}</td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>`;
-
+        html += renderTable(record, result);
         resultsContent.innerHTML = html;
         resultsSection.classList.remove('hidden');
         resultsSection.scrollIntoView({ behavior: 'smooth' });
@@ -503,7 +656,9 @@
         let html = '';
         [...billRecords].reverse().forEach(record => {
             const result = calculate(record);
-            const totalMes = result ? Math.round(result.total.soraya + result.total.cristian + result.total.arturo) : 0;
+            const totalMes = result
+                ? Math.round(result.pagar.soraya + result.pagar.cristian + result.pagar.arturo)
+                : 0;
             const k = key(record);
 
             html += `<div class="history-card" data-key="${k}">
@@ -517,33 +672,7 @@
                 <div class="history-body">`;
 
             if (result) {
-                const houses = ['soraya', 'cristian', 'arturo'];
-                const names = { soraya: 'Soraya', cristian: 'Cristian', arturo: 'Arturo' };
-
-                html += `<table>
-                    <thead>
-                        <tr><th>Casa</th><th class="text-right">m³</th><th class="text-right">%</th><th class="text-right">Agua</th><th class="text-right">Trifásica</th><th class="text-right">Total</th></tr>
-                    </thead><tbody>`;
-
-                houses.forEach(h => {
-                    html += `<tr>
-                        <td><span class="dot ${h}"></span>${names[h]}</td>
-                        <td class="text-right">${result.consumo[h]}</td>
-                        <td class="text-right">${fmtPct(result.pct[h])}</td>
-                        <td class="text-right">${fmtCLP(result.costoAgua[h])}</td>
-                        <td class="text-right">${fmtCLP(result.costoTri[h])}</td>
-                        <td class="text-right">${fmtCLP(result.total[h])}</td>
-                    </tr>`;
-                });
-
-                html += `<tr>
-                    <td>TOTAL</td>
-                    <td class="text-right">${record.totalM3}</td>
-                    <td class="text-right">100%</td>
-                    <td class="text-right">${fmtCLP(record.total3Casas)}</td>
-                    <td class="text-right">${fmtCLP(record.trifasica)}</td>
-                    <td class="text-right">${fmtCLP(totalMes)}</td>
-                </tr></tbody></table>`;
+                html += renderTable(record, result);
             } else {
                 html += '<p style="color:var(--text-light);font-size:0.85rem;">Sin lectura anterior para calcular.</p>';
             }
@@ -569,12 +698,13 @@
 
         yearSel.value = record.year;
         monthSel.value = record.month;
-        document.getElementById('lectura-soraya').value = record.lecturaSoraya;
-        document.getElementById('lectura-cristian').value = record.lecturaCristian;
-        document.getElementById('total-cuenta').value = record.totalCuenta || '';
-        document.getElementById('total-3casas').value = record.total3Casas || '';
-        document.getElementById('trifasica').value = record.trifasica || '';
-        document.getElementById('total-m3').value = record.totalM3 || '';
+        document.getElementById('lectura-soraya').value = inputValue(record.lecturaSoraya);
+        document.getElementById('lectura-cristian').value = inputValue(record.lecturaCristian);
+        document.getElementById('total-cuenta').value = inputValue(record.totalCuenta);
+        document.getElementById('total-3casas').value = inputValue(record.total3Casas);
+        document.getElementById('trifasica').value = inputValue(record.trifasica);
+        document.getElementById('total-m3').value = inputValue(record.totalM3);
+        document.getElementById('perdida-m3').value = inputValue(record.perdidaM3);
 
         document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
         document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
