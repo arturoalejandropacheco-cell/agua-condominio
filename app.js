@@ -22,13 +22,14 @@
         { year: 2026, month: 'Enero', lecturaSoraya: 906, lecturaCristian: 8701, totalCuenta: 518740, total3Casas: 120445, trifasica: 87663, totalM3: 106 },
         { year: 2026, month: 'Febrero', lecturaSoraya: 981, lecturaCristian: 8710, totalCuenta: 624170, total3Casas: 245712, trifasica: 114158, totalM3: 150 },
         { year: 2026, month: 'Marzo', lecturaSoraya: 999, lecturaCristian: 8722, totalCuenta: 475140, total3Casas: 138415, trifasica: 96161, totalM3: 73 },
-        { year: 2026, month: 'Abril', lecturaSoraya: 1048, lecturaCristian: 8733, totalCuenta: 637540, total3Casas: 215526, trifasica: 85569, totalM3: 145, perdidaPesos: 0 },
+        { year: 2026, month: 'Abril', lecturaSoraya: 1016, lecturaCristian: 8733, totalCuenta: 637540, total3Casas: 215526, trifasica: 85569, totalM3: 145, perdidaPesos: 0 },
     ];
 
-    // Abril se había cargado con la lectura de Soraya deducida de la planilla
-    // (1016) y con la fuga como monto aparte. El usuario corrigió ambas cosas.
+    // Abril: totales de boleta completos y sin pérdida este mes. Las lecturas
+    // salen del registro de medidores del usuario (Soraya 999→1016,
+    // Cristian 8722→8733).
     const CORRECCIONES = [
-        { year: 2026, month: 'Abril', lecturaSoraya: 1048, lecturaCristian: 8733, totalCuenta: 637540, total3Casas: 215526, trifasica: 85569, totalM3: 145, perdidaPesos: 0 },
+        { year: 2026, month: 'Abril', lecturaSoraya: 1016, lecturaCristian: 8733, totalCuenta: 637540, total3Casas: 215526, trifasica: 85569, totalM3: 145, perdidaPesos: 0 },
     ];
     // Subir este número agrega los meses nuevos de SEED_DATA a los datos ya
     // guardados, sin pisar nada de lo que el usuario haya editado.
@@ -36,7 +37,7 @@
     // Y este convierte registros del modelo viejo (pérdida en m³, absorbida
     // por Arturo) al nuevo (pérdida en $, repartida entre las 3 casas), y
     // aplica las correcciones de datos que el usuario haya confirmado.
-    const DATA_VERSION = 3;
+    const DATA_VERSION = 4;
     const DATA_VERSION_KEY = 'agua_condominio_data_version';
 
     // ── State ──
