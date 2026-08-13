@@ -993,11 +993,11 @@
     // Las filas suman exactamente el total de boleta: la pérdida es una fila
     // más, no un monto suelto fuera del cuadro.
     function renderTable(record, result) {
-        // Con fuga se muestran las dos vistas del mismo mes: la que separa la
-        // pérdida y la que la deja sumada dentro del agua.
+        // Con fuga se muestran las dos vistas del mismo mes: primero el consumo
+        // de agua con la pérdida ya sumada, y después el desglose que la separa.
         if (!result.hayPerdida) return tablaDesglose(record, result, false, '');
-        return tablaDesglose(record, result, true, 'Pérdida separada') +
-               tablaPerdidaEnAgua(record, result);
+        return tablaConsumoAgua(record, result) +
+               tablaDesglose(record, result, true, 'Pérdida separada');
     }
 
     // Vista 1: la pérdida como columna propia.
@@ -1045,8 +1045,8 @@
         </div>`;
     }
 
-    // Vista 2: mismos totales, pero la pérdida va sumada dentro del agua.
-    function tablaPerdidaEnAgua(record, result) {
+    // Vista principal: mismos totales, con la pérdida ya sumada dentro del agua.
+    function tablaConsumoAgua(record, result) {
         const filas = CASAS.map(h => `
                     <tr>
                         <td><span class="dot ${h}"></span>${NOMBRES[h]}</td>
