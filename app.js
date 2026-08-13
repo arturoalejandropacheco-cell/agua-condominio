@@ -1059,7 +1059,7 @@
 
         const granTotal = CASAS.reduce((s, h) => s + result.total[h], 0);
         return `<div class="result-summary">
-            <p class="tabla-titulo">Pérdida incluida en el agua</p>
+            <p class="tabla-titulo">Desglose consumo de agua</p>
             <div class="tabla-scroll">
             <table>
                 <thead>
@@ -1067,7 +1067,7 @@
                         <th>Casa</th>
                         <th class="text-right">m³</th>
                         <th class="text-right col-pct">%</th>
-                        <th class="text-right">Agua + pérdida</th>
+                        <th class="text-right">Agua</th>
                         <th class="text-right">Trifásica</th>
                         <th class="text-right">Total</th>
                     </tr>
