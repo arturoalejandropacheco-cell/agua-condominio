@@ -276,9 +276,8 @@
                 records = resp.records;
                 sortRecords();
                 saveLocal();
-                populateYears();
+                resetPeriodo();
                 renderHistory();
-                updateHints();
                 ultimoError = null;
                 renderDiagnostico();
                 showSyncStatus('Datos descargados de Google Sheets (' + records.length + ' registros)', 'online');
@@ -300,33 +299,75 @@
         });
         loadConfig();
         loadData();
-        populateYears();
         setupTabs();
         setupForm();
         setupEditCancel();
         setupConfig();
         setupBackup();
-        updateHints();
+        resetPeriodo();
         renderHistory();
         updateSyncIndicator();
     }
 
-    // El rango debe cubrir todos los años con datos: si falta el año de un
-    // registro, al editarlo el <select> queda vacío y se guarda con año NaN.
-    function populateYears() {
+    // Solo el año en curso. `extra` agrega otro año cuando se está editando un
+    // registro viejo: sin esa opción el <select> quedaría vacío y se guardaría
+    // con año NaN.
+    function populateYears(extra) {
         const current = new Date().getFullYear();
-        const years = records.map(r => parseInt(r.year)).filter(y => !isNaN(y));
-        const from = Math.min(2025, current, ...years);
-        const to = Math.max(current + 4, ...years);
+        const years = [current];
+        if (extra && extra !== current) years.push(extra);
+        years.sort((a, b) => a - b);
 
         yearSel.innerHTML = '';
-        for (let y = from; y <= to; y++) {
+        years.forEach(y => {
             const opt = document.createElement('option');
             opt.value = y;
             opt.textContent = y;
             yearSel.appendChild(opt);
+        });
+        yearSel.value = extra || current;
+        yearSel.disabled = years.length === 1;
+    }
+
+    function mesesUsados(year) {
+        return new Set(records.filter(r => parseInt(r.year) === year).map(r => r.month));
+    }
+
+    // Solo los meses de ese año que todavía no tienen datos. `extra` reincorpora
+    // el mes que se está editando, para poder guardarlo en su mismo período.
+    function populateMonths(year, extra) {
+        const usados = mesesUsados(year);
+        if (extra) usados.delete(extra);
+        const disponibles = MONTHS_ORDER.filter(m => !usados.has(m));
+
+        monthSel.innerHTML = '';
+
+        if (disponibles.length === 0) {
+            const opt = document.createElement('option');
+            opt.value = '';
+            opt.textContent = '— ya cargaste todos los meses —';
+            monthSel.appendChild(opt);
+            monthSel.disabled = true;
+            btnSubmit.disabled = true;
+            return;
         }
-        yearSel.value = current;
+
+        disponibles.forEach(m => {
+            const opt = document.createElement('option');
+            opt.value = m;
+            opt.textContent = m;
+            monthSel.appendChild(opt);
+        });
+        monthSel.disabled = false;
+        btnSubmit.disabled = false;
+        monthSel.value = extra || disponibles[0];
+    }
+
+    // Deja los selectores como corresponde: año en curso y meses libres.
+    function resetPeriodo() {
+        populateYears();
+        populateMonths(parseInt(yearSel.value));
+        updateHints();
     }
 
     function updateSyncIndicator() {
@@ -562,9 +603,8 @@
             records = entrantes;
             sortRecords();
             saveLocal();
-            populateYears();
+            resetPeriodo();
             renderHistory();
-            updateHints();
             actualizarInfoRespaldo();
             mostrarBackupStatus('Restaurados ' + records.length + ' registros.', 'success');
         };
@@ -751,6 +791,11 @@
     function updateHints() {
         const year = parseInt(yearSel.value);
         const month = monthSel.value;
+        if (isNaN(year) || !month) {   // sin meses disponibles
+            hintSoraya.textContent = '';
+            hintCristian.textContent = '';
+            return;
+        }
         const prev = getPrevRecord(year, month);
         if (prev) {
             hintSoraya.textContent = 'Anterior: ' + prev.lecturaSoraya + ' m³';
@@ -763,7 +808,12 @@
 
     // ── Form ──
     function setupForm() {
-        yearSel.addEventListener('change', updateHints);
+        // Al cambiar de año cambian los meses libres de ese año.
+        yearSel.addEventListener('change', () => {
+            const mesActual = editingKey ? monthSel.value : null;
+            populateMonths(parseInt(yearSel.value), mesActual);
+            updateHints();
+        });
         monthSel.addEventListener('change', updateHints);
 
         form.addEventListener('submit', async function (e) {
@@ -840,9 +890,8 @@
             const result = calculate(data);
             showResults(data, result);
             form.reset();
-            yearSel.value = data.year;
-            monthSel.value = data.month;
-            updateHints();
+            // El mes recién guardado ya no está libre: se recalculan las opciones.
+            resetPeriodo();
             renderHistory();
 
             // Nube al final y en orden: primero se borra el período viejo,
@@ -858,8 +907,7 @@
             editInfo.classList.add('hidden');
             btnSubmit.textContent = 'Calcular y Guardar';
             form.reset();
-            yearSel.value = new Date().getFullYear();
-            updateHints();
+            resetPeriodo();
         });
     }
 
@@ -1131,8 +1179,11 @@
         editInfo.classList.remove('hidden');
         btnSubmit.textContent = 'Actualizar';
 
-        yearSel.value = record.year;
-        monthSel.value = record.month;
+        // El período que se está editando tiene que estar disponible aunque ya
+        // esté ocupado (por sí mismo) o sea de otro año.
+        populateYears(parseInt(record.year));
+        populateMonths(parseInt(record.year), record.month);
+
         document.getElementById('lectura-soraya').value = inputValue(record.lecturaSoraya);
         document.getElementById('lectura-cristian').value = inputValue(record.lecturaCristian);
         document.getElementById('total-cuenta').value = inputValue(record.totalCuenta);
@@ -1158,6 +1209,14 @@
         records = records.filter(r => key(r) !== k);
         saveLocal();
         deleteFromCloud(record.year, record.month);
+        // Ese mes vuelve a quedar disponible en el selector.
+        if (editingKey === k) {
+            editingKey = null;
+            editInfo.classList.add('hidden');
+            btnSubmit.textContent = 'Calcular y Guardar';
+            form.reset();
+        }
+        resetPeriodo();
         renderHistory();
     };
 

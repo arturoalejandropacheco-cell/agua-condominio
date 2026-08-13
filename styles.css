@@ -133,6 +133,14 @@ main {
     -webkit-appearance: none;
 }
 
+/* El año queda fijo cuando solo hay uno posible: se ve inerte, no roto */
+.field select:disabled {
+    background: #f8fafc;
+    color: var(--text);
+    opacity: 1;
+    -webkit-text-fill-color: var(--text);
+}
+
 .field input:focus, .field select:focus {
     outline: none;
     border-color: var(--primary);
