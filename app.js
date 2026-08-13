@@ -945,10 +945,29 @@
     // Las filas suman exactamente el total de boleta: la pérdida es una fila
     // más, no un monto suelto fuera del cuadro.
     function renderTable(record, result) {
-        // La columna de pérdida solo aparece los meses que tuvieron fuga.
-        const colPerdida = result.hayPerdida;
+        // Con fuga se muestran las dos vistas del mismo mes: la que separa la
+        // pérdida y la que la deja sumada dentro del agua.
+        if (!result.hayPerdida) return tablaDesglose(record, result, false, '');
+        return tablaDesglose(record, result, true, 'Pérdida separada') +
+               tablaPerdidaEnAgua(record, result);
+    }
 
-        let html = `<div class="result-summary">
+    // Vista 1: la pérdida como columna propia.
+    function tablaDesglose(record, result, colPerdida, titulo) {
+        const filas = CASAS.map(h => `
+                    <tr>
+                        <td><span class="dot ${h}"></span>${NOMBRES[h]}</td>
+                        <td class="text-right">${result.consumo[h]}</td>
+                        <td class="text-right col-pct">${fmtPct(result.pct[h])}</td>
+                        <td class="text-right">${fmtCLP(result.costoAgua[h])}</td>
+                        <td class="text-right">${fmtCLP(result.costoTri[h])}</td>
+                        ${colPerdida ? `<td class="text-right">${fmtCLP(result.costoPerdida[h])}</td>` : ''}
+                        <td class="text-right">${fmtCLP(result.total[h])}</td>
+                    </tr>`).join('');
+
+        const granTotal = CASAS.reduce((s, h) => s + result.total[h], 0);
+        return `<div class="result-summary">
+            ${titulo ? `<p class="tabla-titulo">${titulo}</p>` : ''}
             <div class="tabla-scroll">
             <table>
                 <thead>
@@ -962,23 +981,7 @@
                         <th class="text-right">Total</th>
                     </tr>
                 </thead>
-                <tbody>`;
-
-        CASAS.forEach(h => {
-            html += `
-                    <tr>
-                        <td><span class="dot ${h}"></span>${NOMBRES[h]}</td>
-                        <td class="text-right">${result.consumo[h]}</td>
-                        <td class="text-right col-pct">${fmtPct(result.pct[h])}</td>
-                        <td class="text-right">${fmtCLP(result.costoAgua[h])}</td>
-                        <td class="text-right">${fmtCLP(result.costoTri[h])}</td>
-                        ${colPerdida ? `<td class="text-right">${fmtCLP(result.costoPerdida[h])}</td>` : ''}
-                        <td class="text-right">${fmtCLP(result.total[h])}</td>
-                    </tr>`;
-        });
-
-        const granTotal = CASAS.reduce((s, h) => s + result.total[h], 0);
-        html += `
+                <tbody>${filas}
                     <tr>
                         <td>TOTAL</td>
                         <td class="text-right">${record.totalM3}</td>
@@ -990,9 +993,50 @@
                     </tr>
                 </tbody>
             </table>
-            </div>`;
+            </div>
+        </div>`;
+    }
 
-        return html + '</div>';
+    // Vista 2: mismos totales, pero la pérdida va sumada dentro del agua.
+    function tablaPerdidaEnAgua(record, result) {
+        const filas = CASAS.map(h => `
+                    <tr>
+                        <td><span class="dot ${h}"></span>${NOMBRES[h]}</td>
+                        <td class="text-right">${result.consumo[h]}</td>
+                        <td class="text-right col-pct">${fmtPct(result.pct[h])}</td>
+                        <td class="text-right">${fmtCLP(result.costoAgua[h] + result.costoPerdida[h])}</td>
+                        <td class="text-right">${fmtCLP(result.costoTri[h])}</td>
+                        <td class="text-right">${fmtCLP(result.total[h])}</td>
+                    </tr>`).join('');
+
+        const granTotal = CASAS.reduce((s, h) => s + result.total[h], 0);
+        return `<div class="result-summary">
+            <p class="tabla-titulo">Pérdida incluida en el agua</p>
+            <div class="tabla-scroll">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Casa</th>
+                        <th class="text-right">m³</th>
+                        <th class="text-right col-pct">%</th>
+                        <th class="text-right">Agua + pérdida</th>
+                        <th class="text-right">Trifásica</th>
+                        <th class="text-right">Total</th>
+                    </tr>
+                </thead>
+                <tbody>${filas}
+                    <tr>
+                        <td>TOTAL</td>
+                        <td class="text-right">${record.totalM3}</td>
+                        <td class="text-right col-pct">100%</td>
+                        <td class="text-right">${fmtCLP(Number(record.total3Casas) + result.montoPerdida)}</td>
+                        <td class="text-right">${fmtCLP(record.trifasica)}</td>
+                        <td class="text-right">${fmtCLP(granTotal)}</td>
+                    </tr>
+                </tbody>
+            </table>
+            </div>
+        </div>`;
     }
 
     // ── Results display ──

@@ -266,6 +266,20 @@ main {
     box-shadow: 0 1px 3px rgba(0,0,0,0.06);
 }
 
+/* Con fuga se muestran dos tablas del mismo mes: el título dice cuál es cuál */
+.result-summary + .result-summary {
+    margin-top: 0.75rem;
+}
+
+.tabla-titulo {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-weight: 700;
+    color: var(--text-light);
+    margin-bottom: 0.5rem;
+}
+
 /* En celular las 6 columnas no caben: la tabla desplaza en horizontal
    en vez de recortar el Total, que es el dato que se cobra. */
 .result-summary .tabla-scroll {
