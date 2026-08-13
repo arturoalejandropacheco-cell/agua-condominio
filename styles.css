@@ -486,6 +486,9 @@ main {
     background: #dbeafe;
     color: #1e40af;
 }
+.sync-status.clickable {
+    cursor: pointer;
+}
 
 /* Config tab */
 .config-actions {

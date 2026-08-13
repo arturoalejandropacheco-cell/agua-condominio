@@ -53,17 +53,47 @@
     function getApiUrl() { return config.appsScriptUrl; }
     function isOnline() { return !!config.appsScriptUrl; }
 
+    let timerSyncStatus = null;
+
     function showSyncStatus(msg, type) {
+        clearTimeout(timerSyncStatus);
         syncStatusBar.textContent = msg;
         syncStatusBar.className = 'sync-status ' + type;
         syncStatusBar.classList.remove('hidden');
-        if (type !== 'syncing') {
-            setTimeout(() => syncStatusBar.classList.add('hidden'), 4000);
+        // Los errores se quedan hasta que el usuario los cierre: si se ocultan
+        // solos, un fallo de sincronización pasa desapercibido.
+        if (type === 'error') {
+            syncStatusBar.title = 'Toca para cerrar';
+            syncStatusBar.classList.add('clickable');
+        } else if (type !== 'syncing') {
+            syncStatusBar.classList.remove('clickable');
+            timerSyncStatus = setTimeout(() => syncStatusBar.classList.add('hidden'), 4000);
         }
     }
 
     // Guarda el detalle del último fallo para poder mostrarlo en Config.
     let ultimoError = null;
+
+    // Acepta despliegues normales y de Workspace (/a/macros/dominio/), en /exec o /dev.
+    const URL_APPS_SCRIPT = /^https:\/\/script\.google\.com\/(a\/macros\/[^/]+|macros)\/s\/[^/]+\/(exec|dev)\/?$/;
+
+    // Pegar la URL de la planilla en vez de la del despliegue es el error fácil
+    // de cometer: las dos vienen de Google y ninguna se ve "mala".
+    function validarUrlAppsScript(url) {
+        if (!url) return 'Ingresa una URL primero.';
+        if (/docs\.google\.com\/spreadsheets/.test(url)) {
+            return 'Esa es la URL de la planilla, no del Apps Script. La que necesitas sale de ' +
+                'Apps Script → Implementar → Gestionar implementaciones, y termina en /exec.';
+        }
+        if (/script\.google\.com\/.*\/edit/.test(url) || /script\.google\.com\/home/.test(url)) {
+            return 'Esa es la URL del editor de Apps Script, no la del despliegue. ' +
+                'Ve a Implementar → Gestionar implementaciones y copia la URL que termina en /exec.';
+        }
+        if (!URL_APPS_SCRIPT.test(url)) {
+            return 'La URL debe verse así: https://script.google.com/macros/s/XXXXX/exec';
+        }
+        return null;
+    }
 
     function describirRespuesta(status, texto) {
         const crudo = texto || '';
@@ -236,6 +266,11 @@
 
     // ── Init ──
     function init() {
+        syncStatusBar.addEventListener('click', () => {
+            if (syncStatusBar.classList.contains('clickable')) {
+                syncStatusBar.classList.add('hidden');
+            }
+        });
         loadConfig();
         loadData();
         populateYears();
@@ -267,7 +302,15 @@
     }
 
     function updateSyncIndicator() {
-        if (isOnline()) {
+        if (!isOnline()) return;
+        // Una URL mal guardada de antes seguiría fallando en silencio en cada
+        // guardado: hay que avisarlo al abrir, no esperar a que se note.
+        const problema = validarUrlAppsScript(config.appsScriptUrl);
+        if (problema) {
+            ultimoError = 'URL configurada inválida — ' + problema;
+            renderDiagnostico();
+            showSyncStatus('La URL de conexión no es válida. Revisa Config.', 'error');
+        } else {
             showSyncStatus('Conectado a Google Sheets', 'online');
         }
     }
@@ -296,18 +339,29 @@
 
         btnSave.addEventListener('click', () => {
             const url = urlInput.value.trim();
+            configStatus.classList.remove('hidden');
+
+            if (url) {
+                const problema = validarUrlAppsScript(url);
+                if (problema) {
+                    configStatus.textContent = problema;
+                    configStatus.className = 'config-status error';
+                    return;
+                }
+            }
+
             config.appsScriptUrl = url;
             saveConfig();
             configStatus.textContent = url ? 'Conexión guardada' : 'Conexión eliminada (modo local)';
             configStatus.className = 'config-status ' + (url ? 'success' : 'error');
-            configStatus.classList.remove('hidden');
             updateSyncIndicator();
         });
 
         btnTest.addEventListener('click', async () => {
             const url = urlInput.value.trim();
-            if (!url) {
-                configStatus.textContent = 'Ingresa una URL primero';
+            const problema = validarUrlAppsScript(url);
+            if (problema) {
+                configStatus.textContent = problema;
                 configStatus.className = 'config-status error';
                 configStatus.classList.remove('hidden');
                 return;
