@@ -61,45 +61,69 @@ function handleRequest(e) {
 
 // ── Initialize sheets with headers ──
 
+const CAB_REGISTROS = [
+  'Año', 'Mes', 'Lectura Soraya', 'Lectura Cristian',
+  'Total Cuenta ($)', 'Total 3 Casas ($)', 'Trifásica ($)', 'Total m³', 'Pérdida m³'
+];
+const CAB_MEDIDORES = [
+  'Año', 'Mes', 'Lectura Soraya', 'Lectura Cristian',
+  'Consumo Soraya (m³)', 'Consumo Cristian (m³)', 'Consumo Arturo (m³)', 'Pérdida (m³)'
+];
+const CAB_DISTRIBUCION = [
+  'Año', 'Mes', 'Casa', 'Consumo (m³)', '% Consumo',
+  'Costo Agua ($)', 'Costo Trifásica ($)', 'Total a Pagar ($)',
+  'Total 3 Casas ($)', 'Total m³'
+];
+
+/**
+ * ¿Esta hoja la administra la app?
+ *
+ * Una hoja inexistente o vacía se puede usar. Una con contenido solo es
+ * nuestra si su fila 1 son nuestras cabeceras. Esto importa porque el script
+ * limpia desde la fila 2 hacia abajo: si el usuario ya tenía una planilla
+ * hecha a mano con una hoja del mismo nombre, sobrescribirla le borraría el
+ * trabajo sin aviso.
+ */
+function esHojaDeLaApp(hoja, cabeceras) {
+  if (!hoja || hoja.getLastRow() === 0) return true;
+  const ancho = Math.min(cabeceras.length, hoja.getLastColumn()) || 1;
+  const fila1 = hoja.getRange(1, 1, 1, ancho).getValues()[0];
+  return String(fila1[0]).trim() === cabeceras[0] &&
+         String(fila1[1] || '').trim() === cabeceras[1];
+}
+
+function exigirHojaPropia(ss, nombre, cabeceras) {
+  const hoja = ss.getSheetByName(nombre);
+  if (esHojaDeLaApp(hoja, cabeceras)) return hoja;
+  const a1 = String(hoja.getRange(1, 1).getValue()).slice(0, 40);
+  throw new Error(
+    'La hoja "' + nombre + '" ya existe en esta planilla y tiene otro contenido ' +
+    '(su celda A1 dice "' + a1 + '"). El script NO la va a sobrescribir para no ' +
+    'borrar tus datos. Usa una planilla nueva y vacía para la app, o renombra esa hoja.'
+  );
+}
+
+function prepararHoja(ss, nombre, cabeceras) {
+  let hoja = exigirHojaPropia(ss, nombre, cabeceras);
+  if (!hoja) hoja = ss.insertSheet(nombre);
+  hoja.getRange(1, 1, 1, cabeceras.length).setValues([cabeceras]);
+  hoja.getRange(1, 1, 1, cabeceras.length).setFontWeight('bold');
+  hoja.setFrozenRows(1);
+  return hoja;
+}
+
 function initSheets() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
 
-  // Sheet: Registros (raw input data)
-  let reg = ss.getSheetByName(SHEET_REGISTROS);
-  if (!reg) {
-    reg = ss.insertSheet(SHEET_REGISTROS);
-  }
-  reg.getRange('A1:I1').setValues([[
-    'Año', 'Mes', 'Lectura Soraya', 'Lectura Cristian',
-    'Total Cuenta ($)', 'Total 3 Casas ($)', 'Trifásica ($)', 'Total m³', 'Pérdida m³'
-  ]]);
-  reg.getRange('A1:I1').setFontWeight('bold');
-  reg.setFrozenRows(1);
+  // Se validan las tres ANTES de escribir ninguna: si una colisiona, no hay
+  // que dejar la planilla a medio modificar.
+  exigirHojaPropia(ss, SHEET_REGISTROS, CAB_REGISTROS);
+  exigirHojaPropia(ss, SHEET_MEDIDORES, CAB_MEDIDORES);
+  exigirHojaPropia(ss, SHEET_DISTRIBUCION, CAB_DISTRIBUCION);
 
-  // Sheet: Medidores (calculated)
-  let med = ss.getSheetByName(SHEET_MEDIDORES);
-  if (!med) {
-    med = ss.insertSheet(SHEET_MEDIDORES);
-  }
-  med.getRange('A1:H1').setValues([[
-    'Año', 'Mes', 'Lectura Soraya', 'Lectura Cristian',
-    'Consumo Soraya (m³)', 'Consumo Cristian (m³)', 'Consumo Arturo (m³)', 'Pérdida (m³)'
-  ]]);
-  med.getRange('A1:H1').setFontWeight('bold');
-  med.setFrozenRows(1);
-
-  // Sheet: Distribución (calculated)
-  let dist = ss.getSheetByName(SHEET_DISTRIBUCION);
-  if (!dist) {
-    dist = ss.insertSheet(SHEET_DISTRIBUCION);
-  }
-  dist.getRange('A1:J1').setValues([[
-    'Año', 'Mes', 'Casa', 'Consumo (m³)', '% Consumo',
-    'Costo Agua ($)', 'Costo Trifásica ($)', 'Total a Pagar ($)',
-    'Total 3 Casas ($)', 'Total m³'
-  ]]);
-  dist.getRange('A1:J1').setFontWeight('bold');
-  dist.setFrozenRows(1);
+  prepararHoja(ss, SHEET_REGISTROS, CAB_REGISTROS);
+  prepararHoja(ss, SHEET_MEDIDORES, CAB_MEDIDORES);
+  prepararHoja(ss, SHEET_DISTRIBUCION, CAB_DISTRIBUCION);
 
   return { success: true, message: 'Hojas inicializadas' };
 }
@@ -139,7 +163,7 @@ function readAll() {
 
 function saveRecord(data) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  let sheet = ss.getSheetByName(SHEET_REGISTROS);
+  let sheet = exigirHojaPropia(ss, SHEET_REGISTROS, CAB_REGISTROS);
   if (!sheet) {
     initSheets();
     sheet = ss.getSheetByName(SHEET_REGISTROS);
@@ -220,6 +244,9 @@ function updateMedidores(ss) {
   const regSheet = ss.getSheetByName(SHEET_REGISTROS);
   let medSheet = ss.getSheetByName(SHEET_MEDIDORES);
   if (!regSheet || !medSheet) return;
+  // Segunda barrera: esta función limpia desde la fila 2, así que no puede
+  // tocar una hoja que no sea de la app aunque se llame igual.
+  if (!esHojaDeLaApp(medSheet, CAB_MEDIDORES)) return;
 
   const data = regSheet.getDataRange().getValues();
   if (data.length <= 1) return;
@@ -264,6 +291,7 @@ function updateDistribucion(ss) {
   const regSheet = ss.getSheetByName(SHEET_REGISTROS);
   let distSheet = ss.getSheetByName(SHEET_DISTRIBUCION);
   if (!regSheet || !distSheet) return;
+  if (!esHojaDeLaApp(distSheet, CAB_DISTRIBUCION)) return;
 
   const data = regSheet.getDataRange().getValues();
   if (data.length <= 2) return;
