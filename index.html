@@ -71,8 +71,9 @@
                     <h2>Datos de Boleta</h2>
                     <div class="form-row">
                         <div class="field">
-                            <label for="total-cuenta">Total Cuenta Condominio ($)</label>
-                            <input type="number" id="total-cuenta" placeholder="Ej: 624170" min="0" step="any" required>
+                            <label for="total-cuenta">Total Cuenta Condominio ($) <span class="optional">opcional</span></label>
+                            <input type="number" id="total-cuenta" placeholder="Ej: 624170" min="0" step="any">
+                            <span class="hint">Solo de referencia. No entra en el cálculo.</span>
                         </div>
                         <div class="field">
                             <label for="total-3casas">Consumo 3 Casas ($)</label>
@@ -94,10 +95,10 @@
                     </div>
                     <div class="form-row">
                         <div class="field">
-                            <label for="perdida-pesos">Pérdida ($) <span class="optional">opcional</span></label>
-                            <input type="number" id="perdida-pesos" placeholder="Ej: 143280" min="0" step="any">
-                            <span class="hint">Costo de la fuga (agua + trifásica). Se reparte entre las 3 casas
-                                según el % de consumo de cada una.</span>
+                            <label for="perdida-pesos">Pérdida ($)</label>
+                            <input type="number" id="perdida-pesos" placeholder="Ej: 143280" min="0" step="any" required>
+                            <span class="hint">Obligatorio. Si este mes no hubo fuga, ingresa 0. Se reparte entre
+                                las 3 casas según el % de consumo de cada una.</span>
                         </div>
                     </div>
                 </div>

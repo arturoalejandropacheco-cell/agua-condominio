@@ -78,14 +78,14 @@ El script crea automáticamente 3 hojas:
 
 Los datos que se ingresan cada mes:
 
-| Campo | Qué es |
-|---|---|
-| Total Cuenta Condominio ($) | La boleta completa del condominio (referencia) |
-| Consumo 3 Casas ($) | El agua de las 3 casas, **sin** la pérdida |
-| Trifásica ($) | La trifásica de las 3 casas, **sin** la pérdida |
-| Pérdida ($) | El costo de la fuga (agua + trifásica). 0 si no hubo |
-| Total m³ (3 casas) | Solo lo consumido, **sin** los m³ de la fuga |
-| Lecturas de Soraya y Cristian | Lectura acumulada del medidor |
+| Campo | Qué es | |
+|---|---|---|
+| Total Cuenta Condominio ($) | La boleta completa del condominio | opcional, solo referencia |
+| Consumo 3 Casas ($) | El agua de las 3 casas, **sin** la pérdida | obligatorio |
+| Trifásica ($) | La trifásica de las 3 casas, **sin** la pérdida | obligatorio, 0 si no hubo |
+| Pérdida ($) | El costo de la fuga (agua + trifásica) | obligatorio, 0 si no hubo |
+| Total m³ (3 casas) | Solo lo consumido, **sin** los m³ de la fuga | obligatorio |
+| Lecturas de Soraya y Cristian | Lectura acumulada del medidor | obligatorio |
 
 De ahí sale el porcentaje de cada casa:
 

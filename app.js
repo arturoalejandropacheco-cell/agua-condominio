@@ -773,11 +773,13 @@
                 month: monthSel.value,
                 lecturaSoraya: num('lectura-soraya'),
                 lecturaCristian: num('lectura-cristian'),
-                totalCuenta: num('total-cuenta'),
+                // Opcional y solo de referencia: null cuando se deja vacío,
+                // para que al editar el campo vuelva a salir en blanco.
+                totalCuenta: isNaN(num('total-cuenta')) ? null : num('total-cuenta'),
                 total3Casas: num('total-3casas'),
                 trifasica: num('trifasica'),
                 totalM3: num('total-m3'),
-                perdidaPesos: isNaN(num('perdida-pesos')) ? 0 : num('perdida-pesos'),
+                perdidaPesos: num('perdida-pesos'),
             };
 
             if (isNaN(data.year)) {
@@ -789,7 +791,12 @@
                 document.getElementById('trifasica').focus();
                 return;
             }
-            const faltantes = ['lecturaSoraya','lecturaCristian','totalCuenta','total3Casas','totalM3']
+            if (isNaN(data.perdidaPesos)) {
+                alert('La pérdida es obligatoria. Si este mes no hubo fuga, ingresa 0.');
+                document.getElementById('perdida-pesos').focus();
+                return;
+            }
+            const faltantes = ['lecturaSoraya','lecturaCristian','total3Casas','totalM3']
                 .filter(f => isNaN(data[f]));
             if (faltantes.length > 0) {
                 alert('Faltan datos numéricos en el formulario.');

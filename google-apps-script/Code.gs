@@ -152,7 +152,9 @@ function readAll() {
       trifasica: row[6] || 0,
       totalM3: row[7],
       perdidaPesos: row[8] || 0,
-      isInitial: row[4] === '' || row[4] === null || row[4] === 0
+      // El mes inicial es el que solo trae lecturas, sin boleta. Se detecta
+      // por los m³, no por el total de la cuenta, que ahora es opcional.
+      isInitial: !row[7]
     });
   }
 
