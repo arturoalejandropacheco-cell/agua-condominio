@@ -6,11 +6,10 @@
     const SEED_VERSION_KEY = 'agua_condominio_seed_version';
     const MONTHS_ORDER = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 
-    // Las casas que pagan, y todo lo que se reparte (la pérdida también consume
-    // m³ y por lo tanto arrastra costo, aunque no sea una casa).
+    // Todo se reparte entre estas tres según su % de consumo: el agua, la
+    // trifásica y también la pérdida.
     const CASAS = ['soraya', 'cristian', 'arturo'];
-    const REPARTO = ['soraya', 'cristian', 'arturo', 'perdida'];
-    const NOMBRES = { soraya: 'Soraya', cristian: 'Cristian', arturo: 'Arturo', perdida: 'Pérdida' };
+    const NOMBRES = { soraya: 'Soraya', cristian: 'Cristian', arturo: 'Arturo' };
 
     // ── Historical seed data ──
     const SEED_DATA = [
@@ -23,11 +22,15 @@
         { year: 2026, month: 'Enero', lecturaSoraya: 906, lecturaCristian: 8701, totalCuenta: 518740, total3Casas: 120445, trifasica: 87663, totalM3: 106 },
         { year: 2026, month: 'Febrero', lecturaSoraya: 981, lecturaCristian: 8710, totalCuenta: 624170, total3Casas: 245712, trifasica: 114158, totalM3: 150 },
         { year: 2026, month: 'Marzo', lecturaSoraya: 999, lecturaCristian: 8722, totalCuenta: 475140, total3Casas: 138415, trifasica: 96161, totalM3: 73 },
-        { year: 2026, month: 'Abril', lecturaSoraya: 1016, lecturaCristian: 8733, totalCuenta: 637540, total3Casas: 215527, trifasica: 85569, totalM3: 145, perdidaM3: 69 },
+        { year: 2026, month: 'Abril', lecturaSoraya: 1016, lecturaCristian: 8733, totalCuenta: 637540, total3Casas: 112966, trifasica: 44850, totalM3: 76, perdidaPesos: 143280 },
     ];
     // Subir este número agrega los meses nuevos de SEED_DATA a los datos ya
     // guardados, sin pisar nada de lo que el usuario haya editado.
     const SEED_VERSION = 2;
+    // Y este convierte registros del modelo viejo (pérdida en m³, absorbida
+    // por Arturo) al nuevo (pérdida en $, repartida entre las 3 casas).
+    const DATA_VERSION = 2;
+    const DATA_VERSION_KEY = 'agua_condominio_data_version';
 
     // ── State ──
     let records = [];
@@ -540,15 +543,15 @@
 
     function exportarCSV() {
         // Punto y coma: en Chile Excel usa la coma como separador decimal.
-        const filas = [['Año', 'Mes', 'Casa', 'm3', 'Porcentaje', 'Agua', 'Trifasica', 'Total']];
+        const filas = [['Año', 'Mes', 'Casa', 'm3', 'Porcentaje', 'Agua', 'Trifasica', 'Perdida', 'Total']];
         records.filter(r => !r.isInitial).forEach(record => {
             const result = calculate(record);
             if (!result) return;
-            (result.hayPerdida ? REPARTO : CASAS).forEach(h => {
+            CASAS.forEach(h => {
                 filas.push([record.year, record.month, NOMBRES[h], result.consumo[h],
                     (result.pct[h] * 100).toFixed(1) + '%',
                     Math.round(result.costoAgua[h]), Math.round(result.costoTri[h]),
-                    Math.round(result.total[h])]);
+                    Math.round(result.costoPerdida[h]), Math.round(result.total[h])]);
             });
         });
 
@@ -578,12 +581,48 @@
         const stored = localStorage.getItem(STORAGE_KEY);
         if (stored) {
             records = JSON.parse(stored);
+            migrarPerdidaAPesos();
             mergeSeed();
         } else {
             records = SEED_DATA.slice();
             saveLocal();
             localStorage.setItem(SEED_VERSION_KEY, String(SEED_VERSION));
         }
+        localStorage.setItem(DATA_VERSION_KEY, String(DATA_VERSION));
+    }
+
+    /**
+     * Modelo viejo: la pérdida se ingresaba en m³, iba incluida dentro de
+     * totalM3/total3Casas/trifasica, y la pagaba entera Arturo.
+     * Modelo nuevo: la pérdida es un monto en $ aparte, y los totales traen
+     * solo lo consumido.
+     *
+     * La conversión es exacta: se calcula qué parte del agua y de la trifásica
+     * correspondía a la fuga y se saca de los totales para pasarla a $.
+     */
+    function migrarPerdidaAPesos() {
+        const vista = parseInt(localStorage.getItem(DATA_VERSION_KEY)) || 1;
+        if (vista >= DATA_VERSION) return;
+
+        records = records.map(r => {
+            const perdidaM3 = Number(r.perdidaM3) || 0;
+            if (!perdidaM3 || !(Number(r.totalM3) > 0)) {
+                const { perdidaM3: _, ...resto } = r;
+                return resto;
+            }
+            const pct = perdidaM3 / r.totalM3;
+            const aguaPerdida = (Number(r.total3Casas) || 0) * pct;
+            const triPerdida = (Number(r.trifasica) || 0) * pct;
+            const { perdidaM3: _, ...resto } = r;
+            return {
+                ...resto,
+                totalM3: r.totalM3 - perdidaM3,
+                total3Casas: Math.round((Number(r.total3Casas) || 0) - aguaPerdida),
+                trifasica: Math.round((Number(r.trifasica) || 0) - triPerdida),
+                perdidaPesos: Math.round(aguaPerdida + triPerdida),
+            };
+        });
+        saveLocal();
     }
 
     // Agrega los meses de SEED_DATA que falten. Corre una sola vez por versión
@@ -689,7 +728,7 @@
                 total3Casas: num('total-3casas'),
                 trifasica: num('trifasica'),
                 totalM3: num('total-m3'),
-                perdidaM3: isNaN(num('perdida-m3')) ? 0 : num('perdida-m3'),
+                perdidaPesos: isNaN(num('perdida-pesos')) ? 0 : num('perdida-pesos'),
             };
 
             if (isNaN(data.year)) {
@@ -771,22 +810,23 @@
         // Registros antiguos (o bajados de la hoja) pueden no traer el campo.
         const montoAgua = Number(record.total3Casas) || 0;
         const montoTri = Number(record.trifasica) || 0;
-        const perdida = Number(record.perdidaM3) || 0;
+        const montoPerdida = Number(record.perdidaPesos) || 0;
 
         const consumo = {
             soraya: record.lecturaSoraya - prev.lecturaSoraya,
             cristian: record.lecturaCristian - prev.lecturaCristian,
         };
-        // Arturo sigue siendo el residuo, pero descontando la pérdida declarada.
-        consumo.arturo = total - consumo.soraya - consumo.cristian - perdida;
-        consumo.perdida = perdida;
+        // Arturo es el residuo: los m³ ingresados ya vienen sin la fuga.
+        consumo.arturo = total - consumo.soraya - consumo.cristian;
 
-        const pct = {}, costoAgua = {}, costoTri = {}, costoTotal = {};
-        REPARTO.forEach(h => {
+        // Un solo porcentaje por casa reparte las tres cosas.
+        const pct = {}, costoAgua = {}, costoTri = {}, costoPerdida = {}, costoTotal = {};
+        CASAS.forEach(h => {
             pct[h] = total > 0 ? consumo[h] / total : 0;
             costoAgua[h] = montoAgua * pct[h];
             costoTri[h] = montoTri * pct[h];
-            costoTotal[h] = costoAgua[h] + costoTri[h];
+            costoPerdida[h] = montoPerdida * pct[h];
+            costoTotal[h] = costoAgua[h] + costoTri[h] + costoPerdida[h];
         });
 
         return {
@@ -794,14 +834,10 @@
             pct: pct,
             costoAgua: costoAgua,
             costoTri: costoTri,
+            costoPerdida: costoPerdida,
             total: costoTotal,
-            hayPerdida: perdida > 0,
-            // Arturo asume la pérdida: esto es lo que efectivamente paga cada casa.
-            pagar: {
-                soraya: costoTotal.soraya,
-                cristian: costoTotal.cristian,
-                arturo: costoTotal.arturo + costoTotal.perdida,
-            },
+            hayPerdida: montoPerdida > 0,
+            montoPerdida: montoPerdida,
             prev: prev,
             mesesSalto: (record.year * 12 + monthIdx(record.month)) - (prev.year * 12 + monthIdx(prev.month)),
         };
@@ -821,16 +857,16 @@
             w.push(box('La lectura de Cristian es menor que la del período anterior (' + result.prev.lecturaCristian + ' m³). Revisa el medidor.'));
         }
         if (result.consumo.arturo < 0) {
-            w.push(box('El consumo de Arturo resulta negativo: Soraya + Cristian' +
-                (result.hayPerdida ? ' + pérdida' : '') + ' (' +
-                (result.consumo.soraya + result.consumo.cristian + result.consumo.perdida) +
-                ' m³) supera el total de boleta (' + record.totalM3 + ' m³). Revisa las lecturas' +
-                (result.hayPerdida ? ', la pérdida' : '') + ' o el total.'));
+            w.push(box('El consumo de Arturo resulta negativo: Soraya + Cristian (' +
+                (result.consumo.soraya + result.consumo.cristian) +
+                ' m³) supera el total ingresado (' + record.totalM3 + ' m³). ' +
+                'Recuerda que los m³ van sin los de la fuga. Revisa las lecturas o el total.'));
         }
         if (result.hayPerdida) {
-            w.push(box('Este mes tiene ' + result.consumo.perdida + ' m³ de pérdida (' +
-                fmtPct(result.pct.perdida) + ' de la boleta, ' + fmtCLP(result.total.perdida) +
-                '), que asume Arturo.'));
+            const totalMes = CASAS.reduce((s, h) => s + result.total[h], 0);
+            w.push(box('Este mes tiene ' + fmtCLP(result.montoPerdida) + ' de pérdida (' +
+                fmtPct(totalMes > 0 ? result.montoPerdida / totalMes : 0) +
+                ' del total), repartida entre las 3 casas según su consumo.'));
         }
         if (result.mesesSalto > 1) {
             w.push(box('El período anterior con datos es ' + result.prev.month + ' ' + result.prev.year +
@@ -847,7 +883,8 @@
     // Las filas suman exactamente el total de boleta: la pérdida es una fila
     // más, no un monto suelto fuera del cuadro.
     function renderTable(record, result) {
-        const filas = result.hayPerdida ? REPARTO : CASAS;
+        // La columna de pérdida solo aparece los meses que tuvieron fuga.
+        const colPerdida = result.hayPerdida;
 
         let html = `<div class="result-summary">
             <div class="tabla-scroll">
@@ -859,12 +896,13 @@
                         <th class="text-right col-pct">%</th>
                         <th class="text-right">Agua</th>
                         <th class="text-right">Trifásica</th>
+                        ${colPerdida ? '<th class="text-right">Pérdida</th>' : ''}
                         <th class="text-right">Total</th>
                     </tr>
                 </thead>
                 <tbody>`;
 
-        filas.forEach(h => {
+        CASAS.forEach(h => {
             html += `
                     <tr>
                         <td><span class="dot ${h}"></span>${NOMBRES[h]}</td>
@@ -872,11 +910,12 @@
                         <td class="text-right col-pct">${fmtPct(result.pct[h])}</td>
                         <td class="text-right">${fmtCLP(result.costoAgua[h])}</td>
                         <td class="text-right">${fmtCLP(result.costoTri[h])}</td>
+                        ${colPerdida ? `<td class="text-right">${fmtCLP(result.costoPerdida[h])}</td>` : ''}
                         <td class="text-right">${fmtCLP(result.total[h])}</td>
                     </tr>`;
         });
 
-        const granTotal = filas.reduce((s, h) => s + result.total[h], 0);
+        const granTotal = CASAS.reduce((s, h) => s + result.total[h], 0);
         html += `
                     <tr>
                         <td>TOTAL</td>
@@ -884,17 +923,12 @@
                         <td class="text-right col-pct">100%</td>
                         <td class="text-right">${fmtCLP(record.total3Casas)}</td>
                         <td class="text-right">${fmtCLP(record.trifasica)}</td>
+                        ${colPerdida ? `<td class="text-right">${fmtCLP(result.montoPerdida)}</td>` : ''}
                         <td class="text-right">${fmtCLP(granTotal)}</td>
                     </tr>
                 </tbody>
             </table>
             </div>`;
-
-        if (result.hayPerdida) {
-            html += `<p class="nota-perdida">Arturo asume la pérdida:
-                ${fmtCLP(result.total.arturo)} de consumo propio + ${fmtCLP(result.total.perdida)} de pérdida =
-                <strong>${fmtCLP(result.pagar.arturo)}</strong></p>`;
-        }
 
         return html + '</div>';
     }
@@ -910,20 +944,20 @@
         let html = warnings(record, result);
 
         CASAS.forEach(h => {
-            const asumePerdida = h === 'arturo' && result.hayPerdida;
             html += `
                 <div class="result-card">
                     <div class="result-card-header ${h}">
                         <span><span class="dot ${h}"></span>${NOMBRES[h]}</span>
-                        <span class="result-total">${fmtCLP(result.pagar[h])}</span>
+                        <span class="result-total">${fmtCLP(result.total[h])}</span>
                     </div>
                     <div class="result-detail">
                         <span>Consumo <span class="value">${result.consumo[h]} m³</span></span>
                         <span>Porcentaje <span class="value">${fmtPct(result.pct[h])}</span></span>
                         <span>Agua <span class="value">${fmtCLP(result.costoAgua[h])}</span></span>
                         <span>Trifásica <span class="value">${fmtCLP(result.costoTri[h])}</span></span>
-                        ${asumePerdida ? `<span>Consumo propio <span class="value">${fmtCLP(result.total[h])}</span></span>
-                        <span>Pérdida asumida <span class="value">${fmtCLP(result.total.perdida)}</span></span>` : ''}
+                        ${result.hayPerdida
+                            ? `<span>Pérdida <span class="value">${fmtCLP(result.costoPerdida[h])}</span></span>`
+                            : ''}
                     </div>
                 </div>`;
         });
@@ -948,7 +982,7 @@
         [...billRecords].reverse().forEach(record => {
             const result = calculate(record);
             const totalMes = result
-                ? Math.round(result.pagar.soraya + result.pagar.cristian + result.pagar.arturo)
+                ? Math.round(CASAS.reduce((s, h) => s + result.total[h], 0))
                 : 0;
             const k = key(record);
 
@@ -995,7 +1029,7 @@
         document.getElementById('total-3casas').value = inputValue(record.total3Casas);
         document.getElementById('trifasica').value = inputValue(record.trifasica);
         document.getElementById('total-m3').value = inputValue(record.totalM3);
-        document.getElementById('perdida-m3').value = inputValue(record.perdidaM3);
+        document.getElementById('perdida-pesos').value = inputValue(record.perdidaPesos);
 
         document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
         document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));

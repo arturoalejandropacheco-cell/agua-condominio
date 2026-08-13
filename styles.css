@@ -243,9 +243,19 @@ main {
     font-size: 0.8rem;
 }
 
+/* La columna del nombre queda fija: con la de pérdida son 7 columnas y en
+   celular hay que desplazar, pero sin saber de quién es la fila no se lee. */
 .result-summary td:first-child,
 .result-summary th:first-child {
     white-space: nowrap;
+    position: sticky;
+    left: 0;
+    background: var(--card);
+}
+
+.history-body .result-summary td:first-child,
+.history-body .result-summary th:first-child {
+    background: var(--card);
 }
 
 .result-summary th {
@@ -565,10 +575,16 @@ main {
     }
     .result-summary td,
     .result-summary th {
-        padding-left: 0.15rem;
-        padding-right: 0.15rem;
+        padding-left: 0.1rem;
+        padding-right: 0.1rem;
+    }
+    .result-summary td:first-child,
+    .result-summary th:first-child {
+        padding-right: 0.3rem;
     }
     .result-summary .dot {
-        margin-right: 0.25rem;
+        width: 8px;
+        height: 8px;
+        margin-right: 0.2rem;
     }
 }

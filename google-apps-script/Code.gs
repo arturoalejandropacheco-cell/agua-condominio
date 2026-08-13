@@ -63,16 +63,16 @@ function handleRequest(e) {
 
 const CAB_REGISTROS = [
   'Año', 'Mes', 'Lectura Soraya', 'Lectura Cristian',
-  'Total Cuenta ($)', 'Total 3 Casas ($)', 'Trifásica ($)', 'Total m³', 'Pérdida m³'
+  'Total Cuenta ($)', 'Consumo 3 Casas ($)', 'Trifásica ($)', 'Total m³', 'Pérdida ($)'
 ];
 const CAB_MEDIDORES = [
   'Año', 'Mes', 'Lectura Soraya', 'Lectura Cristian',
-  'Consumo Soraya (m³)', 'Consumo Cristian (m³)', 'Consumo Arturo (m³)', 'Pérdida (m³)'
+  'Consumo Soraya (m³)', 'Consumo Cristian (m³)', 'Consumo Arturo (m³)'
 ];
 const CAB_DISTRIBUCION = [
   'Año', 'Mes', 'Casa', 'Consumo (m³)', '% Consumo',
-  'Costo Agua ($)', 'Costo Trifásica ($)', 'Total a Pagar ($)',
-  'Total 3 Casas ($)', 'Total m³'
+  'Costo Agua ($)', 'Costo Trifásica ($)', 'Costo Pérdida ($)', 'Total a Pagar ($)',
+  'Consumo 3 Casas ($)', 'Total m³'
 ];
 
 /**
@@ -151,7 +151,7 @@ function readAll() {
       total3Casas: row[5],
       trifasica: row[6] || 0,
       totalM3: row[7],
-      perdidaM3: row[8] || 0,
+      perdidaPesos: row[8] || 0,
       isInitial: row[4] === '' || row[4] === null || row[4] === 0
     });
   }
@@ -181,7 +181,7 @@ function saveRecord(data) {
   const rowData = [
     data.year, data.month, data.lecturaSoraya, data.lecturaCristian,
     data.totalCuenta || '', data.total3Casas || '', data.trifasica || 0, data.totalM3 || '',
-    data.perdidaM3 || 0
+    data.perdidaPesos || 0
   ];
 
   if (existingRow > 0) {
@@ -253,7 +253,7 @@ function updateMedidores(ss) {
 
   // Clear old data
   if (medSheet.getLastRow() > 1) {
-    medSheet.getRange(2, 1, medSheet.getLastRow() - 1, 8).clearContent();
+    medSheet.getRange(2, 1, medSheet.getLastRow() - 1, 7).clearContent();
   }
 
   const rows = [];
@@ -263,11 +263,10 @@ function updateMedidores(ss) {
     const lecS = data[i][2];
     const lecC = data[i][3];
     const totalM3 = data[i][7];
-    const perdida = data[i][8] || 0;
 
     if (i === 1) {
       // First row: may be initial
-      rows.push([year, month, lecS, lecC, '', '', '', '']);
+      rows.push([year, month, lecS, lecC, '', '', '']);
       continue;
     }
 
@@ -275,13 +274,14 @@ function updateMedidores(ss) {
     const prevLecC = data[i-1][3];
     const consumoS = lecS - prevLecS;
     const consumoC = lecC - prevLecC;
-    const consumoA = totalM3 ? totalM3 - consumoS - consumoC - perdida : '';
+    // Los m³ registrados ya vienen sin la fuga, así que Arturo es el residuo.
+    const consumoA = totalM3 ? totalM3 - consumoS - consumoC : '';
 
-    rows.push([year, month, lecS, lecC, consumoS, consumoC, consumoA, perdida]);
+    rows.push([year, month, lecS, lecC, consumoS, consumoC, consumoA]);
   }
 
   if (rows.length > 0) {
-    medSheet.getRange(2, 1, rows.length, 8).setValues(rows);
+    medSheet.getRange(2, 1, rows.length, 7).setValues(rows);
   }
 }
 
@@ -298,7 +298,7 @@ function updateDistribucion(ss) {
 
   // Clear old data
   if (distSheet.getLastRow() > 1) {
-    distSheet.getRange(2, 1, distSheet.getLastRow() - 1, 10).clearContent();
+    distSheet.getRange(2, 1, distSheet.getLastRow() - 1, 11).clearContent();
   }
 
   const rows = [];
@@ -318,35 +318,28 @@ function updateDistribucion(ss) {
     const prevLecC = data[i-1][3];
     const consumoS = lecS - prevLecS;
     const consumoC = lecC - prevLecC;
-    const consumoA = totalM3 - consumoS - consumoC - perdida;
-
-    const pctS = consumoS / totalM3;
-    const pctC = consumoC / totalM3;
-    const pctA = consumoA / totalM3;
+    const consumoA = totalM3 - consumoS - consumoC;
 
     const houses = [
-      ['Soraya', consumoS, pctS],
-      ['Cristian', consumoC, pctC],
-      ['Arturo', consumoA, pctA]
+      ['Soraya', consumoS, consumoS / totalM3],
+      ['Cristian', consumoC, consumoC / totalM3],
+      ['Arturo', consumoA, consumoA / totalM3]
     ];
-    // La pérdida es una fila más: consume m³ y arrastra costo, y la asume Arturo.
-    if (perdida > 0) {
-      houses.push(['Pérdida (la asume Arturo)', perdida, perdida / totalM3]);
-    }
 
-    houses.forEach(([name, consumo, pct]) => {
+    // El mismo porcentaje reparte agua, trifásica y pérdida.
+    houses.forEach(function (h) {
+      const pct = h[2];
       const costoAgua = total3Casas * pct;
       const costoTri = trifasica * pct;
-      rows.push([year, month, name, consumo, pct, costoAgua, costoTri, costoAgua + costoTri, total3Casas, totalM3]);
+      const costoPerdida = perdida * pct;
+      rows.push([year, month, h[0], h[1], pct, costoAgua, costoTri, costoPerdida,
+        costoAgua + costoTri + costoPerdida, total3Casas, totalM3]);
     });
   }
 
   if (rows.length > 0) {
-    distSheet.getRange(2, 1, rows.length, 10).setValues(rows);
-    // Format percentages
-    const pctRange = distSheet.getRange(2, 5, rows.length, 1);
-    pctRange.setNumberFormat('0.0%');
-    // Format currency
-    distSheet.getRange(2, 6, rows.length, 3).setNumberFormat('#,##0');
+    distSheet.getRange(2, 1, rows.length, 11).setValues(rows);
+    distSheet.getRange(2, 5, rows.length, 1).setNumberFormat('0.0%');
+    distSheet.getRange(2, 6, rows.length, 4).setNumberFormat('#,##0');
   }
 }

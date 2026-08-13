@@ -74,17 +74,31 @@ El script crea automáticamente 3 hojas:
 - **Medidores**: Lecturas y consumos calculados por diferencia
 - **Distribución**: Desglose por casa con porcentajes y costos
 
-### Pérdida de m³
+## Modelo de cálculo
 
-Cuando un mes tiene fuga, se ingresa en el campo **Pérdida m³**. Esos m³ se
-descuentan del consumo de Arturo y aparecen como una fila propia (**Pérdida**)
-en la distribución, con su costo de agua y trifásica calculados con el mismo
-porcentaje. El monto lo asume Arturo, pero queda visible por separado.
+Los datos que se ingresan cada mes:
 
-> Si ya tenías la hoja creada antes de agregar este campo, la columna
-> **Pérdida m³** no existe todavía. Anda a **Config → Subir datos a Google
-> Sheets**: eso vuelve a crear los encabezados y reenvía todos los registros.
-> Acuérdate de actualizar primero la implementación del Apps Script.
+| Campo | Qué es |
+|---|---|
+| Total Cuenta Condominio ($) | La boleta completa del condominio (referencia) |
+| Consumo 3 Casas ($) | El agua de las 3 casas, **sin** la pérdida |
+| Trifásica ($) | La trifásica de las 3 casas, **sin** la pérdida |
+| Pérdida ($) | El costo de la fuga (agua + trifásica). 0 si no hubo |
+| Total m³ (3 casas) | Solo lo consumido, **sin** los m³ de la fuga |
+| Lecturas de Soraya y Cristian | Lectura acumulada del medidor |
+
+De ahí sale el porcentaje de cada casa:
+
+- Consumo Soraya = lectura actual − lectura anterior
+- Consumo Cristian = lectura actual − lectura anterior
+- Consumo Arturo = Total m³ − Soraya − Cristian
+- % de cada casa = su consumo ÷ Total m³
+
+Y ese **mismo porcentaje** reparte las tres cosas: agua, trifásica y pérdida.
+El total de cada casa es la suma de las tres.
+
+> La pérdida se reparte entre las 3 casas según su consumo, no la asume nadie
+> en particular.
 
 ## Notas
 

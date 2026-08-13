@@ -75,26 +75,29 @@
                             <input type="number" id="total-cuenta" placeholder="Ej: 624170" min="0" step="any" required>
                         </div>
                         <div class="field">
-                            <label for="total-3casas">Total 3 Casas ($)</label>
-                            <input type="number" id="total-3casas" placeholder="Ej: 245712" min="0" step="any" required>
+                            <label for="total-3casas">Consumo 3 Casas ($)</label>
+                            <input type="number" id="total-3casas" placeholder="Ej: 112966" min="0" step="any" required>
+                            <span class="hint">Agua de las 3 casas, sin la pérdida.</span>
                         </div>
                     </div>
                     <div class="form-row">
                         <div class="field">
                             <label for="trifasica">Trifásica ($)</label>
-                            <input type="number" id="trifasica" placeholder="Ej: 114158" min="0" step="any" required>
-                            <span class="hint">Obligatorio. Si este mes no hubo cobro, ingresa 0.</span>
+                            <input type="number" id="trifasica" placeholder="Ej: 44850" min="0" step="any" required>
+                            <span class="hint">De las 3 casas, sin la pérdida. Si no hubo cobro, ingresa 0.</span>
                         </div>
                         <div class="field">
                             <label for="total-m3">Total m³ (3 casas)</label>
-                            <input type="number" id="total-m3" placeholder="Ej: 150" min="0" step="any" required>
+                            <input type="number" id="total-m3" placeholder="Ej: 76" min="0" step="any" required>
+                            <span class="hint">Solo lo consumido, sin los m³ de la fuga.</span>
                         </div>
                     </div>
                     <div class="form-row">
                         <div class="field">
-                            <label for="perdida-m3">Pérdida m³ <span class="optional">opcional</span></label>
-                            <input type="number" id="perdida-m3" placeholder="Ej: 69" min="0" step="any">
-                            <span class="hint">m³ perdidos por fuga. Se descuentan de Arturo y se muestran aparte.</span>
+                            <label for="perdida-pesos">Pérdida ($) <span class="optional">opcional</span></label>
+                            <input type="number" id="perdida-pesos" placeholder="Ej: 143280" min="0" step="any">
+                            <span class="hint">Costo de la fuga (agua + trifásica). Se reparte entre las 3 casas
+                                según el % de consumo de cada una.</span>
                         </div>
                     </div>
                 </div>
