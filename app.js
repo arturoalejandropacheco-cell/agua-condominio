@@ -95,6 +95,15 @@
     // Acepta despliegues normales y de Workspace (/a/macros/dominio/), en /exec o /dev.
     const URL_APPS_SCRIPT = /^https:\/\/script\.google\.com\/(a\/macros\/[^/]+|macros)\/s\/[^/]+\/(exec|dev)\/?$/;
 
+    // Una URL de planilla o del editor no es un error de tipeo: es otra cosa
+    // completamente, y no hay nada que corregir en ella. Esas se descartan
+    // solas. Una malformada sí se conserva, por si fue un pegado incompleto.
+    function esUrlIrrecuperable(url) {
+        return /docs\.google\.com\/spreadsheets/.test(url) ||
+               /script\.google\.com\/.*\/edit/.test(url) ||
+               /script\.google\.com\/home/.test(url);
+    }
+
     // Pegar la URL de la planilla en vez de la del despliegue es el error fácil
     // de cometer: las dos vienen de Google y ninguna se ve "mala".
     function validarUrlAppsScript(url) {
@@ -321,6 +330,12 @@
     }
 
     function updateSyncIndicator() {
+        if (urlDescartada) {
+            // Se avisa una vez, en tono informativo: no hay nada que arreglar.
+            showSyncStatus('Se quitó una URL de Google Sheets que no servía (era la de la planilla). ' +
+                'Los datos se guardan en la app.', 'online', true);
+            return;
+        }
         if (!config.appsScriptUrl) return;   // modo local: sin barra, todo normal
         // Una URL guardada que no sirve no es un error de la app: se avisa una
         // vez, en tono de advertencia, y se puede cerrar. La app funciona igual.
@@ -336,9 +351,17 @@
     }
 
     // ── Config ──
+    let urlDescartada = null;
+
     function loadConfig() {
         const stored = localStorage.getItem(CONFIG_KEY);
         if (stored) config = JSON.parse(stored);
+
+        if (config.appsScriptUrl && esUrlIrrecuperable(config.appsScriptUrl)) {
+            urlDescartada = config.appsScriptUrl;
+            config.appsScriptUrl = '';
+            saveConfig();
+        }
     }
 
     function saveConfig() {
