@@ -278,6 +278,7 @@
         setupForm();
         setupEditCancel();
         setupConfig();
+        setupBackup();
         updateHints();
         renderHistory();
         updateSyncIndicator();
@@ -426,6 +427,132 @@
         });
     }
 
+    // ── Respaldo local (sin depender de Google) ──
+    const BACKUP_KEY = 'agua_condominio_ultimo_respaldo';
+
+    function descargarArchivo(contenido, nombre, tipo) {
+        // El BOM hace que Excel abra el CSV con los acentos correctos.
+        const bom = tipo === 'text/csv' ? '﻿' : '';
+        const blob = new Blob([bom + contenido], { type: tipo + ';charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = nombre;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
+    function hoyISO() {
+        const d = new Date();
+        return d.getFullYear() + '-' +
+            String(d.getMonth() + 1).padStart(2, '0') + '-' +
+            String(d.getDate()).padStart(2, '0');
+    }
+
+    function mostrarBackupStatus(msg, tipo) {
+        const caja = document.getElementById('backup-status');
+        caja.textContent = msg;
+        caja.className = 'config-status ' + (tipo || '');
+        caja.classList.remove('hidden');
+    }
+
+    function actualizarInfoRespaldo() {
+        const caja = document.getElementById('backup-info');
+        if (!caja) return;
+        const ultimo = localStorage.getItem(BACKUP_KEY);
+        const meses = records.filter(r => !r.isInitial).length;
+        caja.innerHTML = '<p>' + meses + ' meses guardados en este navegador.</p>' +
+            '<p>' + (ultimo
+                ? 'Último respaldo descargado: <strong>' + ultimo + '</strong>'
+                : '<strong>Nunca has descargado un respaldo.</strong>') + '</p>';
+    }
+
+    function exportarRespaldo() {
+        const payload = {
+            app: 'agua-condominio',
+            version: 1,
+            exportado: new Date().toISOString(),
+            records: records,
+        };
+        descargarArchivo(JSON.stringify(payload, null, 2),
+            'respaldo-agua-condominio-' + hoyISO() + '.json', 'application/json');
+        localStorage.setItem(BACKUP_KEY, hoyISO());
+        actualizarInfoRespaldo();
+        mostrarBackupStatus('Respaldo descargado. Guárdalo en un lugar seguro.', 'success');
+    }
+
+    function importarRespaldo(file) {
+        const lector = new FileReader();
+        lector.onload = () => {
+            let entrantes;
+            try {
+                const data = JSON.parse(lector.result);
+                entrantes = Array.isArray(data) ? data : data.records;
+                if (!Array.isArray(entrantes)) throw new Error('no contiene una lista de registros');
+                // Validar antes de pisar nada: un archivo equivocado no puede
+                // dejar al usuario sin sus datos.
+                const validos = entrantes.filter(r =>
+                    r && !isNaN(parseInt(r.year)) && MONTHS_ORDER.indexOf(r.month) !== -1);
+                if (validos.length === 0) throw new Error('no tiene ningún mes válido');
+                entrantes = validos;
+            } catch (err) {
+                mostrarBackupStatus('El archivo no sirve como respaldo: ' + err.message, 'error');
+                return;
+            }
+
+            if (!confirm('El respaldo tiene ' + entrantes.length + ' registros.\n' +
+                'Esto reemplazará los ' + records.length + ' que tienes ahora. ¿Continuar?')) return;
+
+            records = entrantes;
+            sortRecords();
+            saveLocal();
+            populateYears();
+            renderHistory();
+            updateHints();
+            actualizarInfoRespaldo();
+            mostrarBackupStatus('Restaurados ' + records.length + ' registros.', 'success');
+        };
+        lector.onerror = () => mostrarBackupStatus('No se pudo leer el archivo.', 'error');
+        lector.readAsText(file);
+    }
+
+    function exportarCSV() {
+        // Punto y coma: en Chile Excel usa la coma como separador decimal.
+        const filas = [['Año', 'Mes', 'Casa', 'm3', 'Porcentaje', 'Agua', 'Trifasica', 'Total']];
+        records.filter(r => !r.isInitial).forEach(record => {
+            const result = calculate(record);
+            if (!result) return;
+            (result.hayPerdida ? REPARTO : CASAS).forEach(h => {
+                filas.push([record.year, record.month, NOMBRES[h], result.consumo[h],
+                    (result.pct[h] * 100).toFixed(1) + '%',
+                    Math.round(result.costoAgua[h]), Math.round(result.costoTri[h]),
+                    Math.round(result.total[h])]);
+            });
+        });
+
+        if (filas.length === 1) {
+            mostrarBackupStatus('No hay meses calculados para exportar.', 'error');
+            return;
+        }
+        const csv = filas.map(f => f.join(';')).join('\n');
+        descargarArchivo(csv, 'distribucion-agua-condominio-' + hoyISO() + '.csv', 'text/csv');
+        mostrarBackupStatus('CSV descargado (' + (filas.length - 1) + ' filas).', 'success');
+    }
+
+    function setupBackup() {
+        const inputFile = document.getElementById('file-import');
+        document.getElementById('btn-export').addEventListener('click', exportarRespaldo);
+        document.getElementById('btn-export-csv').addEventListener('click', exportarCSV);
+        document.getElementById('btn-import').addEventListener('click', () => inputFile.click());
+        inputFile.addEventListener('change', e => {
+            if (e.target.files && e.target.files[0]) importarRespaldo(e.target.files[0]);
+            e.target.value = '';
+        });
+        actualizarInfoRespaldo();
+    }
+
     // ── Persistence ──
     function loadData() {
         const stored = localStorage.getItem(STORAGE_KEY);
@@ -457,6 +584,7 @@
 
     function saveLocal() {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+        actualizarInfoRespaldo();
     }
 
     // ── Tabs ──

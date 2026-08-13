@@ -122,7 +122,25 @@
         <!-- TAB: Configuración -->
         <section id="tab-config" class="tab">
             <div class="form-section">
-                <h2>Conexión Google Sheets</h2>
+                <h2>Respaldo de datos</h2>
+                <p class="config-info" style="margin-top:0">Los datos se guardan en este navegador.
+                    Si borras los datos de navegación o cambias de teléfono, se pierden.
+                    <strong>Descarga un respaldo cada cierto tiempo.</strong></p>
+                <div class="config-actions">
+                    <button type="button" id="btn-export" class="btn-primary" style="margin-top:0">Descargar respaldo</button>
+                    <button type="button" id="btn-import" class="btn-secondary">Restaurar respaldo</button>
+                    <button type="button" id="btn-export-csv" class="btn-secondary">Exportar a Excel (CSV)</button>
+                </div>
+                <input type="file" id="file-import" accept=".json,application/json" class="hidden">
+                <div id="backup-status" class="config-status hidden"></div>
+                <div id="backup-info" class="config-info"></div>
+            </div>
+
+            <div class="form-section">
+                <h2>Conexión Google Sheets <span class="optional">opcional</span></h2>
+                <p class="config-info" style="margin-top:0">No hace falta para usar la app. Solo sirve si
+                    además quieres una copia de los datos en una planilla. Requiere una Hoja de Google
+                    <strong>nueva y vacía</strong> (no un archivo .xlsx).</p>
                 <div class="field" style="margin-bottom:0.75rem">
                     <label for="apps-script-url">URL del Apps Script</label>
                     <input type="url" id="apps-script-url" placeholder="https://script.google.com/macros/s/...">
