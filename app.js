@@ -51,18 +51,25 @@
 
     // ── Google Sheets API ──
     function getApiUrl() { return config.appsScriptUrl; }
-    function isOnline() { return !!config.appsScriptUrl; }
+
+    // Una URL inválida es lo mismo que no tener conexión: así la app trabaja
+    // en modo local en vez de intentar (y fallar) una sincronización por cada
+    // mes que se guarde.
+    function isOnline() {
+        return !!config.appsScriptUrl && !validarUrlAppsScript(config.appsScriptUrl);
+    }
 
     let timerSyncStatus = null;
 
-    function showSyncStatus(msg, type) {
+    function showSyncStatus(msg, type, persistente) {
         clearTimeout(timerSyncStatus);
         syncStatusBar.textContent = msg;
         syncStatusBar.className = 'sync-status ' + type;
         syncStatusBar.classList.remove('hidden');
         // Los errores se quedan hasta que el usuario los cierre: si se ocultan
         // solos, un fallo de sincronización pasa desapercibido.
-        if (type === 'error') {
+        const queda = persistente === undefined ? type === 'error' : persistente;
+        if (queda) {
             syncStatusBar.title = 'Toca para cerrar';
             syncStatusBar.classList.add('clickable');
         } else if (type !== 'syncing') {
@@ -303,14 +310,15 @@
     }
 
     function updateSyncIndicator() {
-        if (!isOnline()) return;
-        // Una URL mal guardada de antes seguiría fallando en silencio en cada
-        // guardado: hay que avisarlo al abrir, no esperar a que se note.
+        if (!config.appsScriptUrl) return;   // modo local: sin barra, todo normal
+        // Una URL guardada que no sirve no es un error de la app: se avisa una
+        // vez, en tono de advertencia, y se puede cerrar. La app funciona igual.
         const problema = validarUrlAppsScript(config.appsScriptUrl);
         if (problema) {
             ultimoError = 'URL configurada inválida — ' + problema;
             renderDiagnostico();
-            showSyncStatus('La URL de conexión no es válida. Revisa Config.', 'error');
+            showSyncStatus('Sin conexión a Google Sheets (la URL guardada no sirve). ' +
+                'La app funciona igual. Puedes quitarla en Config.', 'offline', true);
         } else {
             showSyncStatus('Conectado a Google Sheets', 'online');
         }
@@ -356,6 +364,18 @@
             configStatus.textContent = url ? 'Conexión guardada' : 'Conexión eliminada (modo local)';
             configStatus.className = 'config-status ' + (url ? 'success' : 'error');
             updateSyncIndicator();
+        });
+
+        document.getElementById('btn-clear-config').addEventListener('click', () => {
+            config.appsScriptUrl = '';
+            saveConfig();
+            urlInput.value = '';
+            ultimoError = null;
+            renderDiagnostico();
+            syncStatusBar.classList.add('hidden');
+            configStatus.textContent = 'Conexión quitada. La app guarda los datos localmente.';
+            configStatus.className = 'config-status success';
+            configStatus.classList.remove('hidden');
         });
 
         btnTest.addEventListener('click', async () => {
