@@ -1015,6 +1015,10 @@
                     <div class="result-detail">
                         <span>Consumo <span class="value">${result.consumo[h]} m³</span></span>
                         <span>Porcentaje <span class="value">${fmtPct(result.pct[h])}</span></span>
+                    </div>
+                    <!-- Los tres costos van en su propio bloque: si la pérdida
+                         cuelga bajo "Agua" parece parte de ella, y no lo es. -->
+                    <div class="result-costos${result.hayPerdida ? ' con-perdida' : ''}">
                         <span>Agua <span class="value">${fmtCLP(result.costoAgua[h])}</span></span>
                         <span>Trifásica <span class="value">${fmtCLP(result.costoTri[h])}</span></span>
                         ${result.hayPerdida

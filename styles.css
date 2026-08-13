@@ -205,7 +205,7 @@ main {
 }
 
 .result-detail {
-    padding: 0 1rem 0.85rem;
+    padding: 0 1rem;
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 0.4rem 1rem;
@@ -221,6 +221,42 @@ main {
 .result-detail .value {
     font-weight: 600;
     color: var(--text);
+}
+
+/* Los costos: bloque propio, separado del consumo, con las tres partidas
+   en paralelo para que ninguna parezca subordinada a otra. */
+.result-costos {
+    margin: 0 1rem 0.85rem;
+    padding-top: 0.6rem;
+    border-top: 1px solid var(--border);
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.4rem 1rem;
+    font-size: 0.85rem;
+    color: var(--text-light);
+}
+
+.result-costos.con-perdida {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.4rem 0.6rem;
+}
+
+.result-costos span {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.4rem;
+}
+
+.result-costos .value {
+    font-weight: 600;
+    color: var(--text);
+}
+
+@media (max-width: 480px) {
+    /* En pantalla angosta las tres partidas se apilan en vez de apretarse */
+    .result-costos.con-perdida {
+        grid-template-columns: 1fr;
+    }
 }
 
 .result-summary {
