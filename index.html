@@ -4,7 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gastos Agua y Trifásica - Condominio</title>
-    <link rel="stylesheet" href="styles.css">
+    <!-- ?v= obliga al navegador a bajar el archivo nuevo junto con este HTML.
+         GitHub Pages cachea cada archivo 10 min por separado, así que sin esto
+         se puede quedar con un index nuevo y un app.js viejo, y el formulario
+         valida distinto de lo que muestra. SUBIR ESTE NÚMERO EN CADA CAMBIO
+         de app.js o styles.css. -->
+    <link rel="stylesheet" href="styles.css?v=8">
 </head>
 <body>
     <header>
@@ -173,6 +178,6 @@
         </section>
     </main>
 
-    <script src="app.js"></script>
+    <script src="app.js?v=8"></script>
 </body>
 </html>

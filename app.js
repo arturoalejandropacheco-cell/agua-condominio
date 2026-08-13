@@ -796,10 +796,16 @@
                 document.getElementById('perdida-pesos').focus();
                 return;
             }
-            const faltantes = ['lecturaSoraya','lecturaCristian','total3Casas','totalM3']
-                .filter(f => isNaN(data[f]));
+            const OBLIGATORIOS = [
+                ['lecturaSoraya', 'Medidor Soraya', 'lectura-soraya'],
+                ['lecturaCristian', 'Medidor Cristian', 'lectura-cristian'],
+                ['total3Casas', 'Consumo 3 Casas ($)', 'total-3casas'],
+                ['totalM3', 'Total m³ (3 casas)', 'total-m3'],
+            ];
+            const faltantes = OBLIGATORIOS.filter(c => isNaN(data[c[0]]));
             if (faltantes.length > 0) {
-                alert('Faltan datos numéricos en el formulario.');
+                alert('Falta completar: ' + faltantes.map(c => c[1]).join(', ') + '.');
+                document.getElementById(faltantes[0][2]).focus();
                 return;
             }
 
