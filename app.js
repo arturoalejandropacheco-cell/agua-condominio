@@ -62,27 +62,63 @@
         }
     }
 
+    // Guarda el detalle del último fallo para poder mostrarlo en Config.
+    let ultimoError = null;
+
+    function describirRespuesta(status, texto) {
+        const crudo = texto || '';
+        // El dominio del login viene en un href, así que se busca antes de
+        // limpiar las etiquetas; el texto visible se usa para el resto.
+        const limpio = crudo.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+        if (/accounts\.google|ServiceLogin/i.test(crudo) || /inicia\w* sesión|sign in|log in/i.test(limpio)) {
+            return 'HTTP ' + status + ': Google pidió iniciar sesión. La implementación debe tener ' +
+                'acceso "Cualquier persona", no "Solo yo".';
+        }
+        if (/autoriza|authorization|permission|denied|no tienes acceso/i.test(limpio)) {
+            return 'HTTP ' + status + ': el script no está autorizado. Ábrelo en Apps Script y ' +
+                'ejecútalo una vez para dar permisos.';
+        }
+        return 'HTTP ' + status + ': el servidor no devolvió JSON. Respuesta: ' + limpio.slice(0, 160);
+    }
+
     async function apiCall(action, body) {
         if (!isOnline()) return null;
+
         if (action === 'read') {
             const resp = await fetch(getApiUrl() + '?action=read', { redirect: 'follow' });
-            return resp.json();
+            const texto = await resp.text();
+            try {
+                return JSON.parse(texto);
+            } catch (err) {
+                throw new Error(describirRespuesta(resp.status, texto));
+            }
         }
 
         // Escrituras por POST con Content-Type text/plain: es una petición
         // "simple" (sin preflight CORS) y Apps Script la responde tras el 302,
         // así que sí podemos leer si guardó o falló.
+        let resp;
         try {
-            const resp = await fetch(getApiUrl() + '?action=' + action, {
+            resp = await fetch(getApiUrl() + '?action=' + action, {
                 method: 'POST',
                 redirect: 'follow',
                 headers: { 'Content-Type': 'text/plain;charset=utf-8' },
                 body: JSON.stringify(body || {}),
             });
-            return await resp.json();
         } catch (err) {
-            // Despliegues antiguos o red bloqueada: enviamos a ciegas por iframe.
+            // Solo aquí corresponde el iframe: la petición ni siquiera salió
+            // (CORS, sin red, despliegue que no acepta POST).
+            ultimoError = 'La petición no llegó (' + err.message + '). Se envió a ciegas por iframe.';
             return apiCallViaIframe(action, body);
+        }
+
+        // Sí hubo respuesta: si no es JSON es un error real del servidor y hay
+        // que mostrarlo, no disimularlo con un "enviado sin confirmar".
+        const texto = await resp.text();
+        try {
+            return JSON.parse(texto);
+        } catch (err) {
+            throw new Error(describirRespuesta(resp.status, texto));
         }
     }
 
@@ -105,6 +141,26 @@
         return resp;
     }
 
+    function registrarError(contexto, err) {
+        ultimoError = contexto + ' — ' + err.message;
+        renderDiagnostico();
+    }
+
+    // El último fallo queda visible en Config: si la hoja no se actualiza,
+    // el motivo tiene que estar escrito en alguna parte, no adivinarse.
+    function renderDiagnostico() {
+        const caja = document.getElementById('diagnostico');
+        if (!caja) return;
+        if (!ultimoError) {
+            caja.classList.add('hidden');
+            caja.textContent = '';
+            return;
+        }
+        caja.innerHTML = '<strong>Último error de sincronización</strong><br>' +
+            ultimoError.replace(/</g, '&lt;');
+        caja.classList.remove('hidden');
+    }
+
     async function syncToCloud(record) {
         if (!isOnline()) return;
         try {
@@ -113,7 +169,9 @@
             showSyncStatus(resp && resp.sinConfirmar
                 ? 'Enviado a Google Sheets (sin confirmación del servidor)'
                 : 'Sincronizado con Google Sheets', 'online');
+            renderDiagnostico();
         } catch (err) {
+            registrarError('Guardar ' + record.month + ' ' + record.year, err);
             showSyncStatus('Error al sincronizar: ' + err.message, 'error');
         }
     }
@@ -125,24 +183,30 @@
             checkResponse(await apiCall('delete', { year, month }));
             showSyncStatus('Eliminado de Google Sheets', 'online');
         } catch (err) {
+            registrarError('Eliminar ' + month + ' ' + year, err);
             showSyncStatus('Error al eliminar: ' + err.message, 'error');
         }
     }
 
     async function syncAllToCloud() {
         if (!isOnline()) return;
+        let n = 0;
         try {
             showSyncStatus('Subiendo todos los datos...', 'syncing');
             checkResponse(await apiCall('init', {}));
-            let n = 0;
             for (const r of records) {
                 checkResponse(await apiCall('save', r));
                 n++;
                 showSyncStatus('Subiendo ' + n + ' de ' + records.length + '...', 'syncing');
             }
+            ultimoError = null;
             showSyncStatus(n + ' registros subidos a Google Sheets', 'online');
+            renderDiagnostico();
         } catch (err) {
-            showSyncStatus('Error: ' + err.message, 'error');
+            // Decir cuántos alcanzaron a subir: "falló" sin más deja la hoja
+            // a medias sin que se note.
+            registrarError('Subida masiva (se alcanzaron a subir ' + n + ' de ' + records.length + ')', err);
+            showSyncStatus('Error tras subir ' + n + ' de ' + records.length + ': ' + err.message, 'error');
         }
     }
 
@@ -158,11 +222,14 @@
                 populateYears();
                 renderHistory();
                 updateHints();
+                ultimoError = null;
+                renderDiagnostico();
                 showSyncStatus('Datos descargados de Google Sheets (' + records.length + ' registros)', 'online');
             } else {
                 showSyncStatus('No se encontraron datos en Google Sheets', 'offline');
             }
         } catch (err) {
+            registrarError('Descarga', err);
             showSyncStatus('Error: ' + err.message, 'error');
         }
     }
@@ -249,23 +316,45 @@
             configStatus.className = 'config-status';
             configStatus.classList.remove('hidden');
 
+            // Probar solo la lectura da falsa confianza: lo que falla al
+            // actualizar la hoja es la escritura, así que se prueban las dos.
+            const urlPrevia = config.appsScriptUrl;
+            config.appsScriptUrl = url;
+            ultimoError = null;
+
+            let lectura;
             try {
-                const resp = await fetch(url + '?action=read', { redirect: 'follow' });
-                const data = await resp.json();
-                if (data.records !== undefined) {
-                    configStatus.textContent = 'Conexión exitosa. ' + data.records.length + ' registros encontrados.';
-                    configStatus.className = 'config-status success';
-                } else if (data.error) {
-                    configStatus.textContent = 'Error: ' + data.error;
-                    configStatus.className = 'config-status error';
-                } else {
-                    configStatus.textContent = 'Respuesta inesperada del servidor';
-                    configStatus.className = 'config-status error';
-                }
+                lectura = await apiCall('read');
+                if (lectura.error) throw new Error(lectura.error);
+                if (lectura.records === undefined) throw new Error('Respuesta sin campo "records"');
             } catch (err) {
-                configStatus.textContent = 'Error de conexión: ' + err.message;
+                config.appsScriptUrl = urlPrevia;
+                configStatus.textContent = 'Falla la LECTURA: ' + err.message;
                 configStatus.className = 'config-status error';
+                registrarError('Probar conexión (lectura)', err);
+                return;
             }
+
+            try {
+                const escritura = await apiCall('init', {});
+                if (escritura.error) throw new Error(escritura.error);
+                if (escritura.sinConfirmar) throw new Error(
+                    'la petición no llegó al servidor (bloqueo CORS o la implementación no acepta POST). ' +
+                    'Vuelve a crear la implementación como "Aplicación web" con acceso "Cualquier persona".');
+            } catch (err) {
+                config.appsScriptUrl = urlPrevia;
+                configStatus.textContent = 'La lectura funciona (' + lectura.records.length +
+                    ' registros) pero falla la ESCRITURA: ' + err.message;
+                configStatus.className = 'config-status error';
+                registrarError('Probar conexión (escritura)', err);
+                return;
+            }
+
+            config.appsScriptUrl = url;
+            configStatus.textContent = 'Lectura y escritura OK. ' + lectura.records.length +
+                ' registros en la hoja.';
+            configStatus.className = 'config-status success';
+            renderDiagnostico();
         });
 
         btnSyncUp.addEventListener('click', () => {
